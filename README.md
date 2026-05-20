@@ -311,7 +311,7 @@ await uploadStuff.serverUtils.deleteFiles([fileId]);
 | Field | Type | Description |
 |---|---|---|
 | `usageContext` | `TFileUsageContext` | Discriminator stored in the database |
-| `type` | `"image"` or `"image"[]` | Accepted MIME category |
+| `type` | `AcceptedFileType \| AcceptedFileType[]` (currently only `"image"`) | Accepted file category |
 | `maxFileSize` | `FileSize` (e.g. `"4MB"`) | Maximum file size per file |
 | `maxFileCount` | `number` (optional) | Maximum number of files per batch |
 | `isPublic` | `boolean` | Whether the S3 object ACL is `public-read` |
