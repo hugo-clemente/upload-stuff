@@ -4,14 +4,19 @@ import type { DatabaseAdapter, DatabaseFile } from "@upload-stuff/core";
  * Minimal structural shape of the Prisma `File` delegate this adapter uses.
  * Declared locally so the package builds without a generated `@prisma/client`.
  * A consumer's real generated `PrismaClient` is structurally assignable to this.
+ *
+ * Only methods available on every Prisma relational connector are required —
+ * `createMany`/`updateMany` (not the `*AndReturn` variants, which are
+ * PostgreSQL/SQLite/CockroachDB-only) — so the adapter works with MySQL and
+ * SQL Server too.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type PrismaClientLike = {
   file: {
-    create: (args: any) => Promise<any>;
+    createMany: (args: any) => Promise<{ count: number }>;
     findMany: (args: any) => Promise<any[]>;
     update: (args: any) => Promise<any>;
-    updateManyAndReturn: (args: any) => Promise<any[]>;
+    updateMany: (args: any) => Promise<{ count: number }>;
     deleteMany: (args: any) => Promise<any>;
   };
   $transaction: (fn: (tx: PrismaClientLike) => Promise<any>) => Promise<any>;
@@ -24,23 +29,24 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
   prisma: PrismaClientLike;
 }): DatabaseAdapter<TFileUsageContext> => {
   return {
-    createFile: async ({ file }) => {
-      const createdFile = await prisma.file.create({
-        data: {
+    createFiles: async ({ files }) => {
+      await prisma.file.createMany({
+        data: files.map((file) => ({
           ...file,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           uploadSessionData: file.uploadSessionData as any,
-        },
+        })),
       });
-
-      return createdFile as DatabaseFile<TFileUsageContext>;
     },
 
     findFilesByBatchIdAndUploadedBy: async (params) => {
       const files = await prisma.file.findMany({
         where: {
           batchId: params.batchId,
-          uploadedBy: params.uploadedBy,
+          // `?? null` matters: Prisma drops a `field: undefined` clause
+          // entirely (matches all rows), whereas `field: null` matches
+          // IS NULL. Anonymous uploads must only match anonymous batches.
+          uploadedBy: params.uploadedBy ?? null,
         },
       });
 
@@ -63,10 +69,15 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
     },
 
     updateFilesToStored: async (params) => {
-      const updatedFiles = await prisma.file.updateManyAndReturn({
+      // `stored: false` in the where-clause makes this an atomic guard: a
+      // repeated or concurrent completion of the same batch updates 0 rows.
+      const res = await prisma.file.updateMany({
         where: {
           batchId: params.batchId,
-          uploadedBy: params.uploadedBy,
+          // See findFilesByBatchIdAndUploadedBy — `?? null` keeps the owner
+          // filter from silently vanishing for anonymous uploads.
+          uploadedBy: params.uploadedBy ?? null,
+          stored: false,
         },
         data: {
           storedAt: params.storedAt,
@@ -74,7 +85,7 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
         },
       });
 
-      return updatedFiles as DatabaseFile<TFileUsageContext>[];
+      return { updatedCount: res.count };
     },
 
     updateFile: async ({ file }) => {

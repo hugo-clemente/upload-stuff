@@ -2,7 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { HTTPException } from "hono/http-exception";
-import { Hono } from "hono/quick";
+import { Hono } from "hono";
 import { z } from "zod";
 
 import {
@@ -48,10 +48,10 @@ const createRoutes = ({
   uploadStuff: AnyUploadStuff;
   createContext: (opts: { headers: Headers }) => Promise<ValidContextObject>;
 }) => {
-  const getEndpoint = (c: Context) => {
-    const fileRoutes = Object.keys(fileRouter) as (keyof typeof fileRouter)[];
-    const endpointSchema = z.literal(fileRoutes);
+  const fileRoutes = Object.keys(fileRouter) as (keyof typeof fileRouter)[];
+  const endpointSchema = z.literal(fileRoutes);
 
+  const getEndpoint = (c: Context) => {
     const endpoint = c.req.param("endpoint");
     const parsedBody = endpointSchema.safeParse(endpoint);
     if (!parsedBody.success) {

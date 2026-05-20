@@ -50,20 +50,22 @@ export const UploadStuff = <TFileUsageContext extends string>({
 const buildServerUtils = <TFileUsageContext extends string>(
   config: UploadStuffConfig<TFileUsageContext>,
 ) => {
+  const deleteFiles = async (fileIds: string[]) => {
+    await config.databaseAdapter.deleteFiles({
+      fileIds,
+      deleteFromStorage: async (fileKeys: string[]) => {
+        await config.storageAdapter.batchDeleteFiles({ fileKeys });
+      },
+    });
+  };
+
   return {
     cleanUpFiles: async () => {
       const files = await config.databaseAdapter.findFilesToCleanUp({
         createdAtThreshold: subHours(new Date(), 24),
       });
 
-      await config.databaseAdapter.deleteFiles({
-        fileIds: files.map((file) => file.id),
-        deleteFromStorage: async (fileKeys: string[]) => {
-          await config.storageAdapter.batchDeleteFiles({
-            fileKeys,
-          });
-        },
-      });
+      await deleteFiles(files.map((file) => file.id));
     },
 
     uploadFile: async (params: {
@@ -94,14 +96,16 @@ const buildServerUtils = <TFileUsageContext extends string>(
         key,
       });
 
-      await config.databaseAdapter.createFile({
-        file: {
-          ...params.data,
-          id,
-          key,
-          publicUrl,
-          stored: false,
-        },
+      await config.databaseAdapter.createFiles({
+        files: [
+          {
+            ...params.data,
+            id,
+            key,
+            publicUrl,
+            stored: false,
+          },
+        ],
       });
 
       await config.storageAdapter.uploadFile({
@@ -127,16 +131,7 @@ const buildServerUtils = <TFileUsageContext extends string>(
       return file;
     },
 
-    deleteFiles: async (fileIds: string[]) => {
-      await config.databaseAdapter.deleteFiles({
-        fileIds: fileIds,
-        deleteFromStorage: async (fileKeys: string[]) => {
-          await config.storageAdapter.batchDeleteFiles({
-            fileKeys,
-          });
-        },
-      });
-    },
+    deleteFiles,
   };
 };
 

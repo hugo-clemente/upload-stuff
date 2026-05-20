@@ -53,16 +53,22 @@ export const fileRouteHandlers = ({
     filePublicUrlGenerator: uploadStuff.__filePublicUrlGenerator,
   });
 
+  const getRoute = (endpoint: string) => {
+    const route = fileRouter[endpoint];
+
+    if (!route) {
+      throw new UploadStuffError({
+        code: "BAD_REQUEST",
+        message: `Route ${endpoint} not found`,
+      });
+    }
+
+    return route;
+  };
+
   return {
     initUpload: async (endpoint, { files, input }, ctx) => {
-      const route = fileRouter[endpoint];
-
-      if (!route) {
-        throw new UploadStuffError({
-          code: "BAD_REQUEST",
-          message: `Route ${endpoint} not found`,
-        });
-      }
+      const route = getRoute(endpoint);
 
       const inputParsed = await route.inputParser["~standard"].validate(input);
 
@@ -104,27 +110,25 @@ export const fileRouteHandlers = ({
     },
 
     completeUpload: async (endpoint, { batchId }, ctx) => {
-      const route = fileRouter[endpoint];
+      const route = getRoute(endpoint);
 
-      if (!route) {
-        throw new UploadStuffError({
-          code: "BAD_REQUEST",
-          message: `Route ${endpoint} not found`,
+      const { files, input, middlewareData, alreadyCompleted } =
+        await core.completeUpload({
+          batchId,
+          ctx,
+          endpoint,
         });
-      }
 
-      const { files, input, middlewareData } = await core.completeUpload({
-        batchId,
-        ctx,
-        endpoint,
-      });
-
-      const serverData = await route.onUploadComplete({
-        files,
-        ctx,
-        input,
-        middlewareData,
-      });
+      // Skip onUploadComplete when the batch was already finalised — it ran
+      // once on the first completion and re-running duplicates side-effects.
+      const serverData = alreadyCompleted
+        ? undefined
+        : await route.onUploadComplete({
+            files,
+            ctx,
+            input,
+            middlewareData,
+          });
 
       return {
         files,
@@ -133,16 +137,7 @@ export const fileRouteHandlers = ({
     },
 
     getConfig: ({ endpoint }) => {
-      const route = fileRouter[endpoint];
-
-      if (!route) {
-        throw new UploadStuffError({
-          code: "BAD_REQUEST",
-          message: `Route ${endpoint} not found`,
-        });
-      }
-
-      return route.routeConfig;
+      return getRoute(endpoint).routeConfig;
     },
   };
 };

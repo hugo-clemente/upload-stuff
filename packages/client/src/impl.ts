@@ -16,7 +16,11 @@ import type {
   inferRouteInput,
   inferRouteServerData,
 } from "@upload-stuff/core";
-import { acceptedFileTypes, getFileSizeInBytes } from "@upload-stuff/core";
+import {
+  acceptedFileTypes,
+  getFileSizeInBytes,
+  validateFiles,
+} from "@upload-stuff/core";
 
 import { compressImage } from "./compress-images";
 
@@ -92,23 +96,31 @@ export const createUploadStuffReactHelpers = <
       [routeConfig],
     );
 
-    const initMutation = (
-      ...args: Parameters<(typeof client)[":endpoint"]["init-upload"]["$post"]>
-    ) => {
-      return parseResponse(
-        client[":endpoint"]["init-upload"].$post(...args),
-      ) as unknown as InitUploadResult;
-    };
+    const initMutation = useCallback(
+      (
+        ...args: Parameters<
+          (typeof client)[":endpoint"]["init-upload"]["$post"]
+        >
+      ) => {
+        return parseResponse(
+          client[":endpoint"]["init-upload"].$post(...args),
+        ) as unknown as InitUploadResult;
+      },
+      [client],
+    );
 
-    const completeMutation = (
-      ...args: Parameters<
-        (typeof client)[":endpoint"]["complete-upload"]["$post"]
-      >
-    ) => {
-      return parseResponse(
-        client[":endpoint"]["complete-upload"].$post(...args),
-      ) as unknown as CompleteUploadResult<inferRouteServerData<TRoute>>;
-    };
+    const completeMutation = useCallback(
+      (
+        ...args: Parameters<
+          (typeof client)[":endpoint"]["complete-upload"]["$post"]
+        >
+      ) => {
+        return parseResponse(
+          client[":endpoint"]["complete-upload"].$post(...args),
+        ) as unknown as CompleteUploadResult<inferRouteServerData<TRoute>>;
+      },
+      [client],
+    );
 
     const reportProgress = useCallback(
       (extraUploaded: number) => {
@@ -148,46 +160,26 @@ export const createUploadStuffReactHelpers = <
         if (!routeConfig) throw new Error("Route config not loaded yet");
         if (!files || files.length === 0) return;
 
+        const signal = runOpts?.signal;
+        let onAbort: (() => void) | undefined;
+
         try {
           setIsUploading(true);
+          currentXhrsRef.current = [];
 
-          // 1) Pre-processing
           const preparedFiles =
             (await opts?.onBeforeUploadBegin?.({
               files,
-              config: routeConfig!,
+              config: routeConfig,
             })) ?? files;
 
-          // 2) Client-side validation (basic, server will revalidate)
-          if (
-            routeConfig?.maxFileCount &&
-            preparedFiles.length > routeConfig.maxFileCount
-          ) {
-            throw new Error(
-              `Too many files. Maximum allowed: ${routeConfig.maxFileCount}`,
-            );
-          }
-
-          if (routeConfig?.type) {
-            const configTypes = Array.isArray(routeConfig.type)
-              ? routeConfig.type
-              : [routeConfig.type];
-            const validMimeTypes = configTypes.flatMap(
-              (t) => acceptedFileTypes[t],
-            );
-            if (preparedFiles.some((f) => !validMimeTypes.includes(f.type))) {
-              throw new Error(
-                `Unsupported file type: ${preparedFiles.map((f) => f.type).join(", ")}`,
-              );
-            }
-          }
-
-          // 3) Fetch presigned URLs
           const meta = preparedFiles.map((f) => ({
             filename: f.name,
             contentType: f.type || "application/octet-stream",
             size: f.size,
           }));
+
+          validateFiles(meta, routeConfig);
 
           const uploadPlan = await initMutation({
             param: {
@@ -199,7 +191,6 @@ export const createUploadStuffReactHelpers = <
             },
           });
 
-          // 4) Sequential upload with aggregated progress
           totalBytesRef.current = preparedFiles.reduce(
             (acc, f) => acc + f.size,
             0,
@@ -209,7 +200,6 @@ export const createUploadStuffReactHelpers = <
           lastReportedPercentRef.current = 0;
           opts?.onUploadProgress?.(0);
 
-          // Abort handling
           const abort = () => {
             currentXhrsRef.current.forEach((x) => {
               try {
@@ -221,17 +211,17 @@ export const createUploadStuffReactHelpers = <
             currentXhrsRef.current = [];
           };
 
-          if (runOpts?.signal) {
-            if (runOpts.signal.aborted) {
+          if (signal) {
+            if (signal.aborted) {
               abort();
               opts?.onUploadAborted?.();
               throw new Error("Upload aborted.");
             }
-            const onAbort = () => {
+            onAbort = () => {
               abort();
               opts?.onUploadAborted?.();
             };
-            runOpts.signal.addEventListener("abort", onAbort, { once: true });
+            signal.addEventListener("abort", onAbort, { once: true });
           }
 
           for (let i = 0; i < preparedFiles.length; i++) {
@@ -249,11 +239,10 @@ export const createUploadStuffReactHelpers = <
                 reportProgress(delta);
               },
               onInitXhr: (xhr) => currentXhrsRef.current.push(xhr),
-              signal: runOpts?.signal,
+              signal,
             });
           }
 
-          // 5) Server-side completion and verifications
           const verified = await completeMutation({
             param: {
               endpoint: resolvedEndpoint as string,
@@ -263,18 +252,22 @@ export const createUploadStuffReactHelpers = <
             },
           });
 
+          // Only report 100% on success — a failed/aborted upload must not
+          // leave the consumer's progress UI showing a completed bar.
+          opts?.onUploadProgress?.(100);
           opts?.onClientUploadComplete?.(verified);
           return;
         } catch (e) {
           const err =
             e instanceof Error
               ? e
-              : new Error("Une erreur est survenue lors du téléversement.");
+              : new Error("An error occurred during upload.");
           opts?.onUploadError?.(err);
           throw err;
         } finally {
+          if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+          currentXhrsRef.current = [];
           setIsUploading(false);
-          opts?.onUploadProgress?.(100);
         }
       },
       [
@@ -301,8 +294,6 @@ export const createUploadStuffReactHelpers = <
     useUploadStuff,
   };
 };
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 type UseUploadStuffOptions<TRoute extends AnyFileRoute> = {
   headers?: HeadersInit;
@@ -371,9 +362,9 @@ type EndpointArg<
 > = TEndpoint | ((r: RouteRegistry<TFileRouter>) => TEndpoint);
 
 /**
- * This function allows to cmd+click on the route name to navigate to the route definition.
- * It's something uploadthing does, so we're doing the same.
- * Thanks gpt5 for noticing this, and doing it in your own.
+ * Lets the caller pass a `(r) => r.routeName` selector so editors can cmd+click
+ * the route name and navigate to its definition. Resolves the selector to the
+ * route key via a Proxy.
  */
 const resolveEndpoint = <
   TFileRouter extends Record<string, unknown>,
@@ -409,7 +400,7 @@ export const preprocessImages =
       return files;
     }
 
-    const maxSizeBytes = getFileSizeInBytes(maxSize) ?? undefined;
+    const maxSizeBytes = maxSize ? getFileSizeInBytes(maxSize) : undefined;
     const maxSizeMB = maxSizeBytes ? maxSizeBytes / 1024 / 1024 : undefined;
 
     return Promise.all(
@@ -440,6 +431,15 @@ const uploadFileWithProgress = async ({
       file.type || "application/octet-stream",
     );
 
+    let onAbort: (() => void) | undefined;
+    const cleanup = () => {
+      if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+    };
+    const settle = (fn: () => void) => {
+      cleanup();
+      fn();
+    };
+
     if (onInitXhr) onInitXhr(xhr);
     if (signal) {
       if (signal.aborted) {
@@ -450,13 +450,13 @@ const uploadFileWithProgress = async ({
         }
         return reject(new Error("Upload aborted"));
       }
-      const onAbort = () => {
+      onAbort = () => {
         try {
           xhr.abort();
         } catch {
           //do nothing
         }
-        reject(new Error("Upload aborted"));
+        settle(() => reject(new Error("Upload aborted")));
       };
       signal.addEventListener("abort", onAbort, { once: true });
     }
@@ -467,10 +467,12 @@ const uploadFileWithProgress = async ({
       }
     };
 
-    xhr.onerror = () => reject(new Error("Upload failed"));
+    xhr.onerror = () => settle(() => reject(new Error("Upload failed")));
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) return resolve();
-      reject(new Error(`Upload failed (${xhr.status})`));
+      if (xhr.status >= 200 && xhr.status < 300) {
+        return settle(resolve);
+      }
+      settle(() => reject(new Error(`Upload failed (${xhr.status})`)));
     };
 
     xhr.send(file);

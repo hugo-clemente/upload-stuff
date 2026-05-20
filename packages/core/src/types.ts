@@ -20,12 +20,17 @@ export type DatabaseFile<TFileUsageContext extends string> = {
 };
 
 export type DatabaseAdapter<TFileUsageContext extends string = string> = {
-  createFile: (params: {
-    file: DatabaseFile<TFileUsageContext>;
-  }) => Promise<DatabaseFile<TFileUsageContext>>;
+  createFiles: (params: {
+    files: DatabaseFile<TFileUsageContext>[];
+  }) => Promise<void>;
 
   findFilesByBatchIdAndUploadedBy: (params: {
     batchId: string;
+    /**
+     * Owner filter. A defined value matches only that owner's files; an
+     * `undefined` value matches only files with no owner (anonymous uploads).
+     * Adapters MUST NOT treat `undefined` as "match any owner".
+     */
     uploadedBy?: string;
   }) => Promise<DatabaseFile<TFileUsageContext>[]>;
 
@@ -35,10 +40,13 @@ export type DatabaseAdapter<TFileUsageContext extends string = string> = {
 
   updateFilesToStored: (params: {
     batchId: string;
+    /**
+     * Owner filter — same semantics as findFilesByBatchIdAndUploadedBy:
+     * `undefined` matches only anonymous (ownerless) files, never any owner.
+     */
     uploadedBy?: string;
-
     storedAt: Date;
-  }) => Promise<DatabaseFile<TFileUsageContext>[]>;
+  }) => Promise<{ updatedCount: number }>;
 
   updateFile: (params: {
     file: Partial<DatabaseFile<TFileUsageContext>> & { id: string };

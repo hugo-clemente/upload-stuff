@@ -20,9 +20,13 @@ export const s3Adapter = (params: {
       await s3Client.send(command);
       return true;
     } catch (error) {
+      // HeadObject reports a missing key as `NotFound` / HTTP 404 — `NoSuchKey`
+      // is a GetObject-only error code and never appears here.
       if (
         error instanceof AWS.S3ServiceException &&
-        error.name === "NoSuchKey"
+        (error.name === "NotFound" ||
+          error.name === "NoSuchKey" ||
+          error.$metadata?.httpStatusCode === 404)
       ) {
         return false;
       }
@@ -30,22 +34,30 @@ export const s3Adapter = (params: {
     }
   };
 
+  const buildPutObjectInput = (params: {
+    key: string;
+    contentType: string;
+    size: number;
+    usageContext: string;
+    entityId?: string;
+    userId?: string;
+    isPublic: boolean;
+  }): AWS.PutObjectCommandInput => ({
+    Bucket: bucket,
+    Key: params.key,
+    ContentType: params.contentType,
+    ContentLength: params.size,
+    Metadata: {
+      "uploaded-by": params.userId || "",
+      "usage-context": params.usageContext,
+      "entity-id": params.entityId || "",
+    },
+    ACL: params.isPublic ? "public-read" : "private",
+  });
+
   return {
     generatePresignedUpload: async (params) => {
-      const command = new AWS.PutObjectCommand({
-        Bucket: bucket,
-        Key: params.key,
-        ContentType: params.contentType,
-        ContentLength: params.size,
-        // Add metadata
-        Metadata: {
-          "uploaded-by": params.userId || "",
-          "usage-context": params.usageContext,
-          "entity-id": params.entityId || "",
-        },
-        // Set ACL based on public flag
-        ACL: params.isPublic ? "public-read" : "private",
-      });
+      const command = new AWS.PutObjectCommand(buildPutObjectInput(params));
 
       const uploadUrl = await getSignedUrl(s3Client, command, {
         expiresIn: 3600, // 1 hour
@@ -58,19 +70,8 @@ export const s3Adapter = (params: {
 
     uploadFile: async (params) => {
       const command = new AWS.PutObjectCommand({
-        Bucket: bucket,
-        Key: params.key,
+        ...buildPutObjectInput(params),
         Body: params.content,
-        ContentType: params.contentType,
-        ContentLength: params.size,
-        // Add metadata
-        Metadata: {
-          "uploaded-by": params.userId || "",
-          "usage-context": params.usageContext,
-          "entity-id": params.entityId || "",
-        },
-        // Set ACL based on public flag
-        ACL: params.isPublic ? "public-read" : "private",
       });
 
       await s3Client.send(command);
@@ -82,7 +83,6 @@ export const s3Adapter = (params: {
 
     verifyUpload: async (params) => {
       try {
-        // Use HeadObject to get file metadata without downloading the file
         const command = new AWS.HeadObjectCommand({
           Bucket: bucket,
           Key: params.key,
@@ -90,16 +90,13 @@ export const s3Adapter = (params: {
 
         const response = await s3Client.send(command);
 
-        // File exists, now verify its properties
         const actualSize = response.ContentLength || 0;
         const actualContentType = response.ContentType || "";
         const actualEtag = response.ETag?.replace(/"/g, "") || "";
         const lastModified = response.LastModified;
 
-        // Perform various validation checks
         const validations: Array<{ isValid: boolean; error: string }> = [];
 
-        // Check file size
         if (params.expectedSize && actualSize !== params.expectedSize) {
           validations.push({
             isValid: false,
@@ -107,7 +104,6 @@ export const s3Adapter = (params: {
           });
         }
 
-        // Check content type
         if (
           params.expectedContentType &&
           actualContentType !== params.expectedContentType
@@ -118,7 +114,6 @@ export const s3Adapter = (params: {
           });
         }
 
-        // Check ETag (if provided by client)
         if (params.clientEtag && actualEtag !== params.clientEtag) {
           validations.push({
             isValid: false,
@@ -126,7 +121,6 @@ export const s3Adapter = (params: {
           });
         }
 
-        // Check if file is empty
         if (actualSize === 0) {
           validations.push({
             isValid: false,
@@ -147,7 +141,6 @@ export const s3Adapter = (params: {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
-        // If it's a NoSuchKey error, the file doesn't exist
         if (
           error.name === "NoSuchKey" ||
           error.$metadata?.httpStatusCode === 404
@@ -155,28 +148,23 @@ export const s3Adapter = (params: {
           return {
             exists: false,
             isValid: false,
-            error: "File not found in S3" as const,
+            error: "File not found in S3",
           };
         }
 
-        // For other errors, rethrow or handle as needed
         return {
           exists: false,
           isValid: false,
-          error: `Verification failed: ${error.message}` as const,
+          error: `Verification failed: ${error.message}`,
         };
       }
     },
 
     deleteFile: async (params) => {
-      const exists = await fileExists(params.key);
-
-      if (!exists && params.throwIfNotFound) {
+      // DeleteObject is idempotent — only pay for a HeadObject probe when the
+      // caller wants a hard error on a missing key.
+      if (params.throwIfNotFound && !(await fileExists(params.key))) {
         throw new Error("File not found in S3");
-      }
-
-      if (!exists) {
-        return;
       }
 
       const command = new AWS.DeleteObjectCommand({
@@ -202,14 +190,15 @@ export const s3Adapter = (params: {
       const res = await s3Client.send(command);
 
       if (res.Errors && res.Errors.length > 0) {
-        // Maybe add monitoring here
-        const errorMessage = `Error when batch deleting files: ${res.Errors.map((error) => error.Key).join(", ")}`;
+        const errorMessage = `Error when batch deleting files: ${res.Errors.map(
+          (error) => `${error.Key} (${error.Code}: ${error.Message})`,
+        ).join(", ")}`;
 
         if (params.throwIfError) {
           throw new Error(errorMessage);
         }
 
-        console.error("Error when deleting files");
+        console.error(errorMessage);
       }
     },
   };
