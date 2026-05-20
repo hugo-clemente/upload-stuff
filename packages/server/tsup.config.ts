@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+
 import { defineConfig } from "tsup";
 
 export default defineConfig({
@@ -15,5 +17,9 @@ export default defineConfig({
   dts: false,
   clean: true,
   sourcemap: true,
-  onSuccess: "tsc -p tsconfig.build.json",
+  // Async fn (not a string): tsup awaits it, so the build only finishes once
+  // `tsc` has. `execFileSync` throws on a non-zero exit, failing the build.
+  onSuccess: async () => {
+    execFileSync("tsc", ["-p", "tsconfig.build.json"], { stdio: "inherit" });
+  },
 });
