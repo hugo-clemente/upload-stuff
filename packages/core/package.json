@@ -1,0 +1,31 @@
+{
+  "name": "@upload-stuff/core",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Shared isomorphic types, Zod schemas and errors for upload-stuff.",
+  "keywords": ["upload", "file-upload", "s3", "react", "nextjs", "zod"],
+  "repository": { "type": "git", "url": "https://github.com/hugoclemente/upload-stuff", "directory": "packages/core" },
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "files": ["dist"],
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "^1.0.0",
+    "type-fest": "^4.41.0",
+    "zod": "4.1.11"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
