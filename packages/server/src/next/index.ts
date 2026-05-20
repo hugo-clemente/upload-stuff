@@ -1,5 +1,3 @@
-import { handle } from "hono/vercel";
-
 import type {
   UploadStuffRouterWithContext,
   ValidContextObject,
@@ -33,7 +31,7 @@ export const toNextJsHandler = <
     createContext,
   });
 
-  const handler = handle(app);
+  const handler = (req: Request) => app.fetch(req);
 
   return {
     GET: handler,

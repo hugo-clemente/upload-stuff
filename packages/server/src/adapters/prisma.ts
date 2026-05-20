@@ -1,11 +1,27 @@
-import type { PrismaClient } from "@prisma/client";
-
 import type { DatabaseAdapter, DatabaseFile } from "@upload-stuff/core";
+
+/**
+ * Minimal structural shape of the Prisma `File` delegate this adapter uses.
+ * Declared locally so the package builds without a generated `@prisma/client`.
+ * A consumer's real generated `PrismaClient` is structurally assignable to this.
+ */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type PrismaClientLike = {
+  file: {
+    create: (args: any) => Promise<any>;
+    findMany: (args: any) => Promise<any[]>;
+    update: (args: any) => Promise<any>;
+    updateManyAndReturn: (args: any) => Promise<any[]>;
+    deleteMany: (args: any) => Promise<any>;
+  };
+  $transaction: (fn: (tx: PrismaClientLike) => Promise<any>) => Promise<any>;
+};
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export const prismaAdapter = <TFileUsageContext extends string = string>({
   prisma,
 }: {
-  prisma: PrismaClient;
+  prisma: PrismaClientLike;
 }): DatabaseAdapter<TFileUsageContext> => {
   return {
     createFile: async ({ file }) => {

@@ -8,7 +8,12 @@ export default defineConfig({
     "adapters/prisma": "src/adapters/prisma.ts",
   },
   format: ["esm"],
-  dts: true,
+  // Declarations are emitted by `tsc` (see onSuccess), not tsup's bundlers.
+  // tsup's dts paths (rollup-plugin-dts and experimentalDts) both emit before
+  // the type checker is warmed, which re-instantiates the deep Hono RPC chain
+  // in src/next and fails with TS2589. `tsc` checks-then-emits, so it succeeds.
+  dts: false,
   clean: true,
   sourcemap: true,
+  onSuccess: "tsc -p tsconfig.build.json",
 });

@@ -6,8 +6,11 @@ export default defineConfig({
     impl: "src/impl.ts",
   },
   format: ["esm"],
-  dts: true,
+  // Declarations are emitted by `tsc` (see onSuccess), not tsup. See the
+  // comment in packages/server/tsup.config.ts for the rationale.
+  dts: false,
   clean: true,
   sourcemap: true,
   banner: { js: '"use client";' },
+  onSuccess: "tsc -p tsconfig.build.json",
 });

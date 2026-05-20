@@ -3,9 +3,8 @@ import { describe, expectTypeOf, it } from "vitest";
 import type { AnyFileRoute, FileRoute, inferRouteInput } from "./router-types";
 
 describe("inferRouteInput", () => {
-  it("resolves to undefined when input is the UnsetMarker", () => {
-    type Route = AnyFileRoute;
-    expectTypeOf<inferRouteInput<Route>>().toEqualTypeOf<undefined>();
+  it("resolves to any for AnyFileRoute (input is any)", () => {
+    expectTypeOf<inferRouteInput<AnyFileRoute>>().toBeAny();
   });
 
   it("resolves to the declared input type when input is set", () => {
