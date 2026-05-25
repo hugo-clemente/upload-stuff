@@ -1,25 +1,51 @@
 {
   "name": "@upload-stuff/server",
   "version": "0.0.0",
-  "type": "module",
-  "license": "MIT",
   "description": "Server runtime, Next.js handler and S3/Prisma adapters for upload-stuff.",
-  "keywords": ["upload", "file-upload", "s3", "hono", "nextjs", "prisma"],
-  "repository": { "type": "git", "url": "https://github.com/hugoclemente/upload-stuff", "directory": "packages/server" },
-  "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./next": { "types": "./dist/next/index.d.ts", "import": "./dist/next.js" },
-    "./adapters/s3": { "types": "./dist/adapters/s3.d.ts", "import": "./dist/adapters/s3.js" },
-    "./adapters/prisma": { "types": "./dist/adapters/prisma.d.ts", "import": "./dist/adapters/prisma.js" }
+  "keywords": [
+    "file-upload",
+    "hono",
+    "nextjs",
+    "prisma",
+    "s3",
+    "upload"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hugoclemente/upload-stuff",
+    "directory": "packages/server"
   },
-  "files": ["dist"],
-  "publishConfig": { "access": "public" },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./next": {
+      "types": "./dist/next/index.d.ts",
+      "import": "./dist/next.js"
+    },
+    "./adapters/s3": {
+      "types": "./dist/adapters/s3.d.ts",
+      "import": "./dist/adapters/s3.js"
+    },
+    "./adapters/prisma": {
+      "types": "./dist/adapters/prisma.d.ts",
+      "import": "./dist/adapters/prisma.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "vp pack",
+    "dev": "vp pack --watch",
     "check-types": "tsc --noEmit",
-    "lint": "eslint .",
-    "test": "vitest run"
+    "lint": "vp lint ."
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.896.0",
@@ -31,15 +57,15 @@
     "hono": "^4.10.7",
     "zod": "4.1.11"
   },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
   "peerDependencies": {
     "@prisma/client": ">=5.16"
   },
   "peerDependenciesMeta": {
-    "@prisma/client": { "optional": true }
-  },
-  "devDependencies": {
-    "tsup": "^8.3.5",
-    "typescript": "5.9.3",
-    "vitest": "^4.0.18"
+    "@prisma/client": {
+      "optional": true
+    }
   }
 }

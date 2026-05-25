@@ -1,6 +1,4 @@
 node_modules
 dist
-.turbo
-.tsup
 *.tsbuildinfo
 .DS_Store

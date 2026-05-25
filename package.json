@@ -2,24 +2,20 @@
   "name": "upload-stuff-monorepo",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@9.15.9",
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
-    "check-types": "turbo run check-types",
-    "lint": "turbo run lint",
-    "test": "vitest run",
+    "build": "vp run -r build",
+    "dev": "vp run -r --parallel dev",
+    "check-types": "vp run -r check-types",
+    "lint": "vp lint .",
+    "test": "vp test run",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "turbo run build && changeset publish"
+    "release": "vp run -r build && changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.10",
-    "@eslint/js": "^9.38.0",
-    "eslint": "^9.38.0",
-    "turbo": "^2.3.3",
     "typescript": "5.9.3",
-    "typescript-eslint": "^8.18.0",
-    "vitest": "^4.0.18"
-  }
+    "vite-plus": "^0.1.22"
+  },
+  "packageManager": "pnpm@9.15.9"
 }

@@ -104,10 +104,7 @@ export const s3Adapter = (params: {
           });
         }
 
-        if (
-          params.expectedContentType &&
-          actualContentType !== params.expectedContentType
-        ) {
+        if (params.expectedContentType && actualContentType !== params.expectedContentType) {
           validations.push({
             isValid: false,
             error: `Content type mismatch: expected ${params.expectedContentType}, got ${actualContentType}`,
@@ -139,12 +136,9 @@ export const s3Adapter = (params: {
           lastModified,
         };
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // oxlint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
-        if (
-          error.name === "NoSuchKey" ||
-          error.$metadata?.httpStatusCode === 404
-        ) {
+        if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
           return {
             exists: false,
             isValid: false,

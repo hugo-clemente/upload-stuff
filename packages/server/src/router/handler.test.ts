@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { UploadStuffError } from "@upload-stuff/core";
 import type {
@@ -20,18 +20,12 @@ const fakeDatabaseAdapter = (): DatabaseAdapter => {
     },
     findFilesByBatchIdAndUploadedBy: async ({ batchId, uploadedBy }) =>
       // `undefined` matches only ownerless files — never any owner.
-      rows.filter(
-        (r) => r.batchId === batchId && r.uploadedBy === uploadedBy,
-      ),
+      rows.filter((r) => r.batchId === batchId && r.uploadedBy === uploadedBy),
     findFilesToCleanUp: async () => [],
     updateFilesToStored: async ({ batchId, uploadedBy }) => {
       let updatedCount = 0;
       rows = rows.map((r) => {
-        if (
-          r.batchId === batchId &&
-          r.uploadedBy === uploadedBy &&
-          !r.stored
-        ) {
+        if (r.batchId === batchId && r.uploadedBy === uploadedBy && !r.stored) {
           updatedCount++;
           return { ...r, stored: true };
         }
@@ -115,9 +109,7 @@ const initData = {
 describe("fileRouteHandlers", () => {
   it("rejects an unknown endpoint", async () => {
     const { handlers } = setup();
-    await expect(handlers.initUpload("nope", initData, ctx)).rejects.toThrow(
-      UploadStuffError,
-    );
+    await expect(handlers.initUpload("nope", initData, ctx)).rejects.toThrow(UploadStuffError);
   });
 
   it("runs init then complete on the same endpoint", async () => {
@@ -133,9 +125,9 @@ describe("fileRouteHandlers", () => {
     const { handlers, getCompletions } = setup();
     const init = await handlers.initUpload("avatars", initData, ctx);
 
-    await expect(
-      handlers.completeUpload("docs", { batchId: init.batchId }, ctx),
-    ).rejects.toThrow(UploadStuffError);
+    await expect(handlers.completeUpload("docs", { batchId: init.batchId }, ctx)).rejects.toThrow(
+      UploadStuffError,
+    );
     expect(getCompletions().docsCompletions).toBe(0);
   });
 
@@ -151,8 +143,8 @@ describe("fileRouteHandlers", () => {
 
   it("throws when no files exist for a batch", async () => {
     const { handlers } = setup();
-    await expect(
-      handlers.completeUpload("avatars", { batchId: "missing" }, ctx),
-    ).rejects.toThrow(UploadStuffError);
+    await expect(handlers.completeUpload("avatars", { batchId: "missing" }, ctx)).rejects.toThrow(
+      UploadStuffError,
+    );
   });
 });

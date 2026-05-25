@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { UploadStuffError } from "./errors";
 import type { AnyRouteConfig } from "./router-types";
@@ -13,9 +13,7 @@ const config: AnyRouteConfig = {
   maxFileCount: 2,
 };
 
-const file = (
-  overrides: Partial<InitUploadFileData> = {},
-): InitUploadFileData => ({
+const file = (overrides: Partial<InitUploadFileData> = {}): InitUploadFileData => ({
   filename: "photo.png",
   contentType: "image/png",
   size: 1024,
@@ -28,21 +26,19 @@ describe("validateFiles", () => {
   });
 
   it("rejects too many files", () => {
-    expect(() =>
-      validateFiles([file(), file(), file()], config),
-    ).toThrowError(UploadStuffError);
+    expect(() => validateFiles([file(), file(), file()], config)).toThrowError(UploadStuffError);
   });
 
   it("rejects a file over maxFileSize", () => {
-    expect(() =>
-      validateFiles([file({ size: 6 * 1024 * 1024 })], config),
-    ).toThrowError(UploadStuffError);
+    expect(() => validateFiles([file({ size: 6 * 1024 * 1024 })], config)).toThrowError(
+      UploadStuffError,
+    );
   });
 
   it("rejects an unsupported content type", () => {
-    expect(() =>
-      validateFiles([file({ contentType: "application/pdf" })], config),
-    ).toThrowError(UploadStuffError);
+    expect(() => validateFiles([file({ contentType: "application/pdf" })], config)).toThrowError(
+      UploadStuffError,
+    );
   });
 
   it("throws BAD_REQUEST on rejection", () => {

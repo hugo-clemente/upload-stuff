@@ -20,9 +20,7 @@ export type DatabaseFile<TFileUsageContext extends string> = {
 };
 
 export type DatabaseAdapter<TFileUsageContext extends string = string> = {
-  createFiles: (params: {
-    files: DatabaseFile<TFileUsageContext>[];
-  }) => Promise<void>;
+  createFiles: (params: { files: DatabaseFile<TFileUsageContext>[] }) => Promise<void>;
 
   findFilesByBatchIdAndUploadedBy: (params: {
     batchId: string;
@@ -97,15 +95,9 @@ export type StorageAdapter = {
     lastModified?: Date;
   }>;
 
-  deleteFile: (params: {
-    key: string;
-    throwIfNotFound?: boolean;
-  }) => Promise<void>;
+  deleteFile: (params: { key: string; throwIfNotFound?: boolean }) => Promise<void>;
 
-  batchDeleteFiles: (params: {
-    fileKeys: string[];
-    throwIfError?: boolean;
-  }) => Promise<void>;
+  batchDeleteFiles: (params: { fileKeys: string[]; throwIfError?: boolean }) => Promise<void>;
 };
 
 export type FileKeyGenerator = (params: {
@@ -119,9 +111,7 @@ export type FileIdGenerator = (params: {
   usageContext: string;
 }) => string | Promise<string>;
 
-export type FilePublicUrlGenerator = (params: {
-  key: string;
-}) => string | Promise<string>;
+export type FilePublicUrlGenerator = (params: { key: string }) => string | Promise<string>;
 
 export type UploadStuffConfig<TFileUsageContext extends string> = {
   storageAdapter: StorageAdapter;
@@ -131,8 +121,7 @@ export type UploadStuffConfig<TFileUsageContext extends string> = {
   filePublicUrlGenerator: FilePublicUrlGenerator;
 };
 
-export type CreateUploadStuffConfig<TFileUsageContext extends string> =
-  SetOptional<
-    UploadStuffConfig<TFileUsageContext>,
-    "fileIdGenerator" | "fileKeyGenerator"
-  >;
+export type CreateUploadStuffConfig<TFileUsageContext extends string> = SetOptional<
+  UploadStuffConfig<TFileUsageContext>,
+  "fileIdGenerator" | "fileKeyGenerator"
+>;

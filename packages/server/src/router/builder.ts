@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* oxlint-disable @typescript-eslint/no-explicit-any */
 import type { UploadStuff } from "../upload-stuff";
 import type {
   AnyBuiltUploaderTypes,
@@ -84,10 +84,7 @@ const internalCreateBuilder = <
 };
 
 export const createUploadStuffRouter =
-  <
-    TContext extends ValidContextObject,
-    TUploadStuff extends UploadStuff<any>,
-  >() =>
+  <TContext extends ValidContextObject, TUploadStuff extends UploadStuff<any>>() =>
   (
     routeConfig: RouteConfig<TUploadStuff["$types"]["fileUsageContext"]>,
   ): UploadBuilder<
@@ -104,10 +101,7 @@ export const createUploadStuffRouter =
     },
     TUploadStuff["$types"]["fileUsageContext"]
   > => {
-    return internalCreateBuilder<
-      TContext,
-      TUploadStuff["$types"]["fileUsageContext"]
-    >({
+    return internalCreateBuilder<TContext, TUploadStuff["$types"]["fileUsageContext"]>({
       routeConfig,
     });
   };

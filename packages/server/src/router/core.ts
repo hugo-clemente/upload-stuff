@@ -28,11 +28,7 @@ interface InitUploadHandler<TFileUsageContext extends string> {
 }
 
 interface CompleteUploadHandler {
-  (params: {
-    batchId: string;
-    ctx: ValidContextObject;
-    endpoint: string;
-  }): Promise<
+  (params: { batchId: string; ctx: ValidContextObject; endpoint: string }): Promise<
     Omit<CompleteUploadResult, "serverData"> & {
       input: Json;
       middlewareData: ValidMiddlewareObject;
@@ -79,9 +75,7 @@ export const createCore = <TFileUsageContext extends string>(
 
     if (!uploadSessionDataParse.success) {
       throw new Error(
-        `Invalid upload session data : ${z.prettifyError(
-          uploadSessionDataParse.error,
-        )}`,
+        `Invalid upload session data : ${z.prettifyError(uploadSessionDataParse.error)}`,
       );
     }
 
@@ -129,7 +123,7 @@ export const createCore = <TFileUsageContext extends string>(
         contentType: file.contentType,
         uploadedBy: ctx.userId,
         batchId,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // oxlint-disable-next-line @typescript-eslint/no-explicit-any
         uploadSessionData: uploadSessionDataParse.data as any,
         usageContext: config.usageContext,
         isPublic: config.isPublic,
@@ -152,11 +146,7 @@ export const createCore = <TFileUsageContext extends string>(
     };
   };
 
-  const completeUpload: CompleteUploadHandler = async ({
-    batchId,
-    ctx,
-    endpoint,
-  }) => {
+  const completeUpload: CompleteUploadHandler = async ({ batchId, ctx, endpoint }) => {
     const files = await databaseAdapter.findFilesByBatchIdAndUploadedBy({
       batchId,
       uploadedBy: ctx.userId,
@@ -169,9 +159,7 @@ export const createCore = <TFileUsageContext extends string>(
       });
     }
 
-    const uploadSessionDataParse = uploadSessionDataSchema.safeParse(
-      files[0]!.uploadSessionData,
-    );
+    const uploadSessionDataParse = uploadSessionDataSchema.safeParse(files[0]!.uploadSessionData);
 
     if (!uploadSessionDataParse.success) {
       throw new UploadStuffError({

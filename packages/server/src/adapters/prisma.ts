@@ -10,7 +10,7 @@ import type { DatabaseAdapter, DatabaseFile } from "@upload-stuff/core";
  * PostgreSQL/SQLite/CockroachDB-only) — so the adapter works with MySQL and
  * SQL Server too.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* oxlint-disable @typescript-eslint/no-explicit-any */
 type PrismaClientLike = {
   file: {
     createMany: (args: any) => Promise<{ count: number }>;
@@ -21,7 +21,7 @@ type PrismaClientLike = {
   };
   $transaction: (fn: (tx: PrismaClientLike) => Promise<any>) => Promise<any>;
 };
-/* eslint-enable @typescript-eslint/no-explicit-any */
+/* oxlint-enable @typescript-eslint/no-explicit-any */
 
 export const prismaAdapter = <TFileUsageContext extends string = string>({
   prisma,
@@ -33,7 +33,7 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
       await prisma.file.createMany({
         data: files.map((file) => ({
           ...file,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          // oxlint-disable-next-line @typescript-eslint/no-explicit-any
           uploadSessionData: file.uploadSessionData as any,
         })),
       });
@@ -95,7 +95,7 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
         },
         data: {
           ...file,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          // oxlint-disable-next-line @typescript-eslint/no-explicit-any
           uploadSessionData: file.uploadSessionData as any,
         },
       });

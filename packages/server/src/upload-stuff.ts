@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* oxlint-disable @typescript-eslint/no-explicit-any */
 import { createId } from "@paralleldrive/cuid2";
 import { subHours } from "date-fns";
 
@@ -71,13 +71,7 @@ const buildServerUtils = <TFileUsageContext extends string>(
     uploadFile: async (params: {
       data: Omit<
         DatabaseFile<TFileUsageContext>,
-        | "stored"
-        | "id"
-        | "key"
-        | "storedAt"
-        | "batchId"
-        | "publicUrl"
-        | "uploadSessionData"
+        "stored" | "id" | "key" | "storedAt" | "batchId" | "publicUrl" | "uploadSessionData"
       >;
       content: FileUploadContent;
     }) => {

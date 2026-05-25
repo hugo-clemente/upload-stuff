@@ -4,11 +4,11 @@ A file-upload library built on presigned S3 uploads, a typed [Hono](https://hono
 
 ## Packages
 
-| Package | Description |
-|---|---|
+| Package                | Description                                                               |
+| ---------------------- | ------------------------------------------------------------------------- |
 | `@upload-stuff/server` | Server runtime (Hono), Next.js App Router handler, S3 and Prisma adapters |
-| `@upload-stuff/client` | React hooks and helpers |
-| `@upload-stuff/core` | Isomorphic types, Zod schemas, errors and utils (comes transitively) |
+| `@upload-stuff/client` | React hooks and helpers                                                   |
+| `@upload-stuff/core`   | Isomorphic types, Zod schemas, errors and utils (comes transitively)      |
 
 All packages are ESM-only.
 
@@ -55,8 +55,7 @@ export const uploadStuff = UploadStuff<FileUsageContext>({
     bucket: process.env.S3_BUCKET!,
   }),
   databaseAdapter: prismaAdapter({ prisma }),
-  filePublicUrlGenerator: ({ key }) =>
-    `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${key}`,
+  filePublicUrlGenerator: ({ key }) => `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${key}`,
 });
 ```
 
@@ -151,20 +150,17 @@ export const { useUploadStuff } = createUploadStuffReactHelpers<FileRouter>({
 import { useUploadStuff } from "@/lib/upload-stuff-client";
 
 export function AvatarUpload() {
-  const { startUpload, isUploading, accept, isLoading } = useUploadStuff(
-    (r) => r.avatar,
-    {
-      onClientUploadComplete: (res) => {
-        console.log("Done:", res.files);
-      },
-      onUploadError: (err) => {
-        console.error(err.message);
-      },
-      onUploadProgress: (percent) => {
-        console.log(`${percent}%`);
-      },
+  const { startUpload, isUploading, accept, isLoading } = useUploadStuff((r) => r.avatar, {
+    onClientUploadComplete: (res) => {
+      console.log("Done:", res.files);
     },
-  );
+    onUploadError: (err) => {
+      console.error(err.message);
+    },
+    onUploadProgress: (percent) => {
+      console.log(`${percent}%`);
+    },
+  });
 
   return (
     <input
@@ -258,12 +254,24 @@ For any other ORM or database, implement the `DatabaseAdapter` interface from `@
 import type { DatabaseAdapter } from "@upload-stuff/core";
 
 const myAdapter: DatabaseAdapter<"avatar" | "document"> = {
-  createFile: async ({ file }) => { /* ... */ },
-  findFilesByBatchIdAndUploadedBy: async (params) => { /* ... */ },
-  findFilesToCleanUp: async (params) => { /* ... */ },
-  updateFilesToStored: async (params) => { /* ... */ },
-  updateFile: async ({ file }) => { /* ... */ },
-  deleteFiles: async (params) => { /* ... */ },
+  createFile: async ({ file }) => {
+    /* ... */
+  },
+  findFilesByBatchIdAndUploadedBy: async (params) => {
+    /* ... */
+  },
+  findFilesToCleanUp: async (params) => {
+    /* ... */
+  },
+  updateFilesToStored: async (params) => {
+    /* ... */
+  },
+  updateFile: async ({ file }) => {
+    /* ... */
+  },
+  deleteFiles: async (params) => {
+    /* ... */
+  },
 };
 ```
 
@@ -298,23 +306,23 @@ await uploadStuff.serverUtils.deleteFiles([fileId]);
 
 `createUploadStuffRouter<TContext, TUploadStuff>()` returns a function that accepts a `RouteConfig` and returns an `UploadBuilder`. The builder methods are chainable:
 
-| Method | Description |
-|---|---|
-| `.input(schema)` | Attach a [Standard Schema](https://standardschema.dev/)-compatible input parser (e.g. Zod) |
-| `.middleware(fn)` | Run server-side logic; return data forwarded to `onUploadComplete` |
-| `.metadata(fn)` | Attach `entityId` metadata |
-| `.onUploadComplete(fn)` | Called after S3 upload is verified; return value is sent back to the client |
-| `.build()` | Finalise and return the `FileRoute` |
+| Method                  | Description                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `.input(schema)`        | Attach a [Standard Schema](https://standardschema.dev/)-compatible input parser (e.g. Zod) |
+| `.middleware(fn)`       | Run server-side logic; return data forwarded to `onUploadComplete`                         |
+| `.metadata(fn)`         | Attach `entityId` metadata                                                                 |
+| `.onUploadComplete(fn)` | Called after S3 upload is verified; return value is sent back to the client                |
+| `.build()`              | Finalise and return the `FileRoute`                                                        |
 
 `RouteConfig` fields:
 
-| Field | Type | Description |
-|---|---|---|
-| `usageContext` | `TFileUsageContext` | Discriminator stored in the database |
-| `type` | `AcceptedFileType \| AcceptedFileType[]` (currently only `"image"`) | Accepted file category |
-| `maxFileSize` | `FileSize` (e.g. `"4MB"`) | Maximum file size per file |
-| `maxFileCount` | `number` (optional) | Maximum number of files per batch |
-| `isPublic` | `boolean` | Whether the S3 object ACL is `public-read` |
+| Field          | Type                                                                | Description                                |
+| -------------- | ------------------------------------------------------------------- | ------------------------------------------ |
+| `usageContext` | `TFileUsageContext`                                                 | Discriminator stored in the database       |
+| `type`         | `AcceptedFileType \| AcceptedFileType[]` (currently only `"image"`) | Accepted file category                     |
+| `maxFileSize`  | `FileSize` (e.g. `"4MB"`)                                           | Maximum file size per file                 |
+| `maxFileCount` | `number` (optional)                                                 | Maximum number of files per batch          |
+| `isPublic`     | `boolean`                                                           | Whether the S3 object ACL is `public-read` |
 
 ## License
 

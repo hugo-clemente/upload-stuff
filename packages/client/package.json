@@ -1,21 +1,38 @@
 {
   "name": "@upload-stuff/client",
   "version": "0.0.0",
-  "type": "module",
-  "license": "MIT",
   "description": "React hooks and helpers for upload-stuff.",
-  "keywords": ["upload", "file-upload", "react", "swr", "hooks"],
-  "repository": { "type": "git", "url": "https://github.com/hugoclemente/upload-stuff", "directory": "packages/client" },
-  "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  "keywords": [
+    "file-upload",
+    "hooks",
+    "react",
+    "swr",
+    "upload"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hugoclemente/upload-stuff",
+    "directory": "packages/client"
   },
-  "files": ["dist"],
-  "publishConfig": { "access": "public" },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "vp pack",
+    "dev": "vp pack --watch",
     "check-types": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "vp lint ."
   },
   "dependencies": {
     "@upload-stuff/core": "workspace:*",
@@ -25,13 +42,12 @@
     "ts-pattern": "5.9.0",
     "type-fest": "^4.41.0"
   },
-  "peerDependencies": {
-    "react": ">=19"
-  },
   "devDependencies": {
     "@types/react": "19.2.2",
     "@upload-stuff/server": "workspace:*",
-    "tsup": "^8.3.5",
     "typescript": "5.9.3"
+  },
+  "peerDependencies": {
+    "react": ">=19"
   }
 }

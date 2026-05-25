@@ -88,23 +88,19 @@ const createRoutes = ({
         return handleError(c, error);
       }
     })
-    .post(
-      "/:endpoint/init-upload",
-      zValidator("json", initUploadHandlerSchema),
-      async (c) => {
-        const endpoint = getEndpoint(c);
-        const ctx = c.get("ctx");
+    .post("/:endpoint/init-upload", zValidator("json", initUploadHandlerSchema), async (c) => {
+      const endpoint = getEndpoint(c);
+      const ctx = c.get("ctx");
 
-        const data = c.req.valid("json");
+      const data = c.req.valid("json");
 
-        try {
-          const result = await routeHandler.initUpload(endpoint, data, ctx);
-          return c.json(result);
-        } catch (error) {
-          return handleError(c, error);
-        }
-      },
-    )
+      try {
+        const result = await routeHandler.initUpload(endpoint, data, ctx);
+        return c.json(result);
+      } catch (error) {
+        return handleError(c, error);
+      }
+    })
     .post(
       "/:endpoint/complete-upload",
       zValidator("json", completeUploadHandlerSchema),

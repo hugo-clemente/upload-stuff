@@ -1,13 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* oxlint-disable @typescript-eslint/no-explicit-any */
 import type * as Standard from "@standard-schema/spec";
 
 import type { AcceptedFileType, FileSize } from "./utils/helpers";
 import type { Json } from "./utils/types";
-import type {
-  InitUploadFileData,
-  ToUploadFileData,
-  UploadedFileData,
-} from "./schemas";
+import type { InitUploadFileData, ToUploadFileData, UploadedFileData } from "./schemas";
 
 export type UnsetMarker = "unsetMarker" & { __brand: "unsetMarker" };
 export type ErrorMessage<TError extends string> = TError;
@@ -75,10 +71,7 @@ export type AnyBuiltUploaderTypes = {
   context: any;
 };
 
-export type FileRoute<
-  TTypes extends AnyBuiltUploaderTypes,
-  TFileUsageContext extends string,
-> = {
+export type FileRoute<TTypes extends AnyBuiltUploaderTypes, TFileUsageContext extends string> = {
   $types: TTypes;
   routeConfig: RouteConfig<TFileUsageContext>;
   inputParser: Standard.StandardSchemaV1;
@@ -101,10 +94,7 @@ type AnyParams = {
   _completeFnData: any;
 };
 
-export interface UploadBuilder<
-  TParams extends AnyParams,
-  TFileUsageContext extends string,
-> {
+export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext extends string> {
   input: <TIn extends Json, TOut>(
     parser: TParams["_input"]["in"] extends UnsetMarker
       ? Standard.StandardSchemaV1<TIn, TOut>
@@ -126,11 +116,7 @@ export interface UploadBuilder<
 
   metadata: (
     fn: TParams["_metadata"] extends UnsetMarker
-      ? MetadataFn<
-          TParams["_ctx"],
-          TParams["_input"]["out"],
-          TParams["_middlewareData"]
-        >
+      ? MetadataFn<TParams["_ctx"], TParams["_input"]["out"], TParams["_middlewareData"]>
       : ErrorMessage<"metadata has already been set">,
   ) => UploadBuilder<
     {
@@ -162,12 +148,7 @@ export interface UploadBuilder<
 
   onUploadComplete: <TOut extends Json | void>(
     fn: TParams["_completeFnData"] extends UnsetMarker
-      ? UploadCompleteFn<
-          TParams["_ctx"],
-          TParams["_input"]["out"],
-          TParams["_metadata"],
-          TOut
-        >
+      ? UploadCompleteFn<TParams["_ctx"], TParams["_input"]["out"], TParams["_metadata"], TOut>
       : ErrorMessage<"onUploadComplete has already been set">,
   ) => UploadBuilder<
     {
@@ -225,11 +206,7 @@ export type CompleteUploadResult<TServerData extends Json = Json> = {
 };
 
 export type inferRouteInput<TRoute extends AnyFileRoute> =
-  TRoute["$types"]["input"] extends UnsetMarker
-    ? undefined
-    : TRoute["$types"]["input"];
+  TRoute["$types"]["input"] extends UnsetMarker ? undefined : TRoute["$types"]["input"];
 export type inferRouteServerData<TRoute extends AnyFileRoute> = Awaited<
-  TRoute["$types"]["output"] extends UnsetMarker
-    ? null
-    : TRoute["$types"]["output"]
+  TRoute["$types"]["output"] extends UnsetMarker ? null : TRoute["$types"]["output"]
 >;

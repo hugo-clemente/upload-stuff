@@ -112,12 +112,11 @@ export const fileRouteHandlers = ({
     completeUpload: async (endpoint, { batchId }, ctx) => {
       const route = getRoute(endpoint);
 
-      const { files, input, middlewareData, alreadyCompleted } =
-        await core.completeUpload({
-          batchId,
-          ctx,
-          endpoint,
-        });
+      const { files, input, middlewareData, alreadyCompleted } = await core.completeUpload({
+        batchId,
+        ctx,
+        endpoint,
+      });
 
       // Skip onUploadComplete when the batch was already finalised — it ran
       // once on the first completion and re-running duplicates side-effects.

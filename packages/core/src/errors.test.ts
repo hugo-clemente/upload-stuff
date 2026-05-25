@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { UploadStuffError } from "./errors";
 
@@ -14,12 +14,8 @@ describe("UploadStuffError", () => {
   });
 
   it("maps UNAUTHORIZED to 401 and FORBIDDEN to 403", () => {
-    expect(
-      new UploadStuffError({ code: "UNAUTHORIZED", message: "x" }).status,
-    ).toBe(401);
-    expect(
-      new UploadStuffError({ code: "FORBIDDEN", message: "x" }).status,
-    ).toBe(403);
+    expect(new UploadStuffError({ code: "UNAUTHORIZED", message: "x" }).status).toBe(401);
+    expect(new UploadStuffError({ code: "FORBIDDEN", message: "x" }).status).toBe(403);
   });
 
   it("is an instanceof Error", () => {

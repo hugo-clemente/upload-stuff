@@ -16,15 +16,11 @@ import type {
   inferRouteInput,
   inferRouteServerData,
 } from "@upload-stuff/core";
-import {
-  acceptedFileTypes,
-  getFileSizeInBytes,
-  validateFiles,
-} from "@upload-stuff/core";
+import { acceptedFileTypes, getFileSizeInBytes, validateFiles } from "@upload-stuff/core";
 
 import { compressImage } from "./compress-images";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* oxlint-disable @typescript-eslint/no-explicit-any */
 
 export interface CreateUploadStuffClientOptions {
   baseURL: string;
@@ -36,25 +32,19 @@ const getOptions = (options: CreateUploadStuffClientOptions) => {
 
   const basePath = options.basePath ?? "/api/upload-stuff";
 
-  const client = hc<UploadStuffHTTPServerType>(
-    new URL(basePath, baseURL).toString(),
-  );
+  const client = hc<UploadStuffHTTPServerType>(new URL(basePath, baseURL).toString());
 
   return {
     client,
   };
 };
 
-export const createUploadStuffReactHelpers = <
-  TFileRouter extends UploadStuffRouter,
->(
+export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRouter>(
   options: SetOptional<CreateUploadStuffClientOptions, "basePath">,
 ) => {
   const { client } = getOptions(options);
 
-  const useRouteConfig = <TEndpoint extends keyof TFileRouter>(
-    endpoint: TEndpoint,
-  ) => {
+  const useRouteConfig = <TEndpoint extends keyof TFileRouter>(endpoint: TEndpoint) => {
     const $get = client[":endpoint"]["route-config"].$get;
 
     const fetcher = (arg: InferRequestType<typeof $get>) => async () => {
@@ -87,9 +77,7 @@ export const createUploadStuffReactHelpers = <
       [endpoint],
     );
 
-    const { data: routeConfig, isLoading } = useRouteConfig(
-      resolvedEndpoint as string,
-    );
+    const { data: routeConfig, isLoading } = useRouteConfig(resolvedEndpoint as string);
 
     const accept = useMemo(
       () => (routeConfig ? getAcceptFromType(routeConfig.type) : undefined),
@@ -97,39 +85,28 @@ export const createUploadStuffReactHelpers = <
     );
 
     const initMutation = useCallback(
-      (
-        ...args: Parameters<
-          (typeof client)[":endpoint"]["init-upload"]["$post"]
-        >
-      ) => {
+      (...args: Parameters<(typeof client)[":endpoint"]["init-upload"]["$post"]>) => {
         return parseResponse(
           client[":endpoint"]["init-upload"].$post(...args),
         ) as unknown as InitUploadResult;
       },
-      [client],
+      [],
     );
 
     const completeMutation = useCallback(
-      (
-        ...args: Parameters<
-          (typeof client)[":endpoint"]["complete-upload"]["$post"]
-        >
-      ) => {
+      (...args: Parameters<(typeof client)[":endpoint"]["complete-upload"]["$post"]>) => {
         return parseResponse(
           client[":endpoint"]["complete-upload"].$post(...args),
         ) as unknown as CompleteUploadResult<inferRouteServerData<TRoute>>;
       },
-      [client],
+      [],
     );
 
     const reportProgress = useCallback(
       (extraUploaded: number) => {
         uploadedBytesRef.current += extraUploaded;
         const total = totalBytesRef.current || 1;
-        const percent = Math.min(
-          100,
-          Math.round((uploadedBytesRef.current / total) * 100),
-        );
+        const percent = Math.min(100, Math.round((uploadedBytesRef.current / total) * 100));
         const granularity = opts?.uploadProgressGranularity ?? "coarse";
         if (granularity === "all") {
           opts?.onUploadProgress?.(percent);
@@ -145,8 +122,7 @@ export const createUploadStuffReactHelpers = <
         if (
           percent === 100 ||
           percent - lastReportedPercentRef.current >= step ||
-          Math.floor(percent / step) !==
-            Math.floor(lastReportedPercentRef.current / step)
+          Math.floor(percent / step) !== Math.floor(lastReportedPercentRef.current / step)
         ) {
           opts?.onUploadProgress?.(percent);
           lastReportedPercentRef.current = percent;
@@ -191,10 +167,7 @@ export const createUploadStuffReactHelpers = <
             },
           });
 
-          totalBytesRef.current = preparedFiles.reduce(
-            (acc, f) => acc + f.size,
-            0,
-          );
+          totalBytesRef.current = preparedFiles.reduce((acc, f) => acc + f.size, 0);
 
           uploadedBytesRef.current = 0;
           lastReportedPercentRef.current = 0;
@@ -258,10 +231,7 @@ export const createUploadStuffReactHelpers = <
           opts?.onClientUploadComplete?.(verified);
           return;
         } catch (e) {
-          const err =
-            e instanceof Error
-              ? e
-              : new Error("An error occurred during upload.");
+          const err = e instanceof Error ? e : new Error("An error occurred during upload.");
           opts?.onUploadError?.(err);
           throw err;
         } finally {
@@ -270,14 +240,7 @@ export const createUploadStuffReactHelpers = <
           setIsUploading(false);
         }
       },
-      [
-        opts,
-        reportProgress,
-        routeConfig,
-        initMutation,
-        completeMutation,
-        resolvedEndpoint,
-      ],
+      [opts, reportProgress, routeConfig, initMutation, completeMutation, resolvedEndpoint],
     );
 
     return {
@@ -311,9 +274,7 @@ type UseUploadStuffOptions<TRoute extends AnyFileRoute> = {
   /**
    * Callback that runs *after* the server-side onUploadComplete
    */
-  onClientUploadComplete?: (
-    res: CompleteUploadResult<inferRouteServerData<TRoute>>,
-  ) => void;
+  onClientUploadComplete?: (res: CompleteUploadResult<inferRouteServerData<TRoute>>) => void;
 
   onUploadError?: (error: Error) => void;
   onUploadAborted?: () => void;
@@ -327,11 +288,7 @@ export type StartUploadFnOptions = {
 
 export type StartUploadFn<TRoute extends AnyFileRoute> =
   inferRouteInput<TRoute> extends undefined
-    ? (
-        files: File[],
-        input?: undefined,
-        options?: StartUploadFnOptions,
-      ) => Promise<void>
+    ? (files: File[], input?: undefined, options?: StartUploadFnOptions) => Promise<void>
     : (
         files: File[],
         input: inferRouteInput<TRoute>,
@@ -390,9 +347,7 @@ const resolveEndpoint = <
 };
 
 export const preprocessImages =
-  (
-    maxWidthOrHeight?: number,
-  ): UseUploadStuffOptions<any>["onBeforeUploadBegin"] =>
+  (maxWidthOrHeight?: number): UseUploadStuffOptions<any>["onBeforeUploadBegin"] =>
   async ({ files, config }) => {
     const maxSize = config?.maxFileSize;
 
@@ -426,10 +381,7 @@ const uploadFileWithProgress = async ({
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", uploadUrl);
-    xhr.setRequestHeader(
-      "Content-Type",
-      file.type || "application/octet-stream",
-    );
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
 
     let onAbort: (() => void) | undefined;
     const cleanup = () => {

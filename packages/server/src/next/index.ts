@@ -1,12 +1,6 @@
-import type {
-  UploadStuffRouterWithContext,
-  ValidContextObject,
-} from "@upload-stuff/core";
+import type { UploadStuffRouterWithContext, ValidContextObject } from "@upload-stuff/core";
 import type { UploadStuff } from "../upload-stuff";
-import {
-  type UploadStuffHTTPServerConfig,
-  createHttpServer,
-} from "./http-server";
+import { type UploadStuffHTTPServerConfig, createHttpServer } from "./http-server";
 
 export type { UploadStuffHTTPServerType } from "./http-server";
 

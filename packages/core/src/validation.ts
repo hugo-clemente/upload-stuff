@@ -8,10 +8,7 @@ import { acceptedFileTypes, getFileSizeInBytes } from "./utils/helpers";
  * (authoritative). Throws an `UploadStuffError` so the HTTP layer maps it to a
  * 400 instead of an unhandled 500.
  */
-export const validateFiles = (
-  files: InitUploadFileData[],
-  config: AnyRouteConfig,
-): void => {
+export const validateFiles = (files: InitUploadFileData[], config: AnyRouteConfig): void => {
   if (config.maxFileCount && files.length > config.maxFileCount) {
     throw new UploadStuffError({
       code: "BAD_REQUEST",
