@@ -5,6 +5,7 @@ import {
   createFileSystemGeneratorCache,
 } from 'fumadocs-typescript';
 import { AutoTypeTable, type AutoTypeTableProps } from 'fumadocs-typescript/ui';
+import { Popup, PopupContent, PopupTrigger } from 'fumadocs-twoslash/ui';
 
 // AutoTypeTable reads the workspace package source directly (not the built
 // `dist`), so the API reference can never drift from the real types. The
@@ -16,6 +17,9 @@ const generator = createGenerator({
 export function getMDXComponents(components?: MDXComponents) {
   return {
     ...defaultMdxComponents,
+    Popup,
+    PopupContent,
+    PopupTrigger,
     AutoTypeTable: (props: Partial<AutoTypeTableProps>) => (
       <AutoTypeTable {...props} generator={generator} />
     ),

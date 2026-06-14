@@ -1,13 +1,29 @@
 ---
-title: Hello World
-description: Your first document
+title: upload-stuff
+description: A typed, presigned-S3 file-upload library for React and Next.js.
 ---
 
-Welcome to the docs! You can start writing documents in `/content/docs`.
+upload-stuff is a file-upload library built on presigned S3 uploads, a typed
+[Hono](https://hono.dev) RPC layer, and React hooks. Define a typed file router
+on the server, wire it into your Next.js App Router, and call `useUploadStuff`
+from the client.
 
-## What is Next?
+Every code sample on this site is type-checked against the current packages, so
+nothing you copy here is stale:
+
+```ts twoslash
+import { z } from "zod";
+import { createUploadStuffRouter } from "@upload-stuff/server";
+
+// Hover any identifier — the types come straight from the published packages.
+const schema = z.object({ folderId: z.string() });
+//    ^?
+```
+
+## Next steps
 
 <Cards>
-  <Card title="Learn more about Next.js" href="https://nextjs.org/docs" />
-  <Card title="Learn more about Fumadocs" href="https://fumadocs.dev" />
+  <Card title="Quickstart" href="/docs/quickstart" />
+  <Card title="Core concepts" href="/docs/concepts" />
+  <Card title="API reference" href="/docs/api" />
 </Cards>
