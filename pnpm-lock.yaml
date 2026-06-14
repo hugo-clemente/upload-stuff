@@ -70,12 +70,6 @@ importers:
 
   packages/server:
     dependencies:
-      '@aws-sdk/client-s3':
-        specifier: ^3.896.0
-        version: 3.1050.0
-      '@aws-sdk/s3-request-presigner':
-        specifier: ^3.896.0
-        version: 3.1050.0
       '@hono/zod-validator':
         specifier: ^0.7.5
         version: 0.7.6(hono@4.12.21)(zod@4.1.11)
@@ -98,6 +92,12 @@ importers:
         specifier: 4.1.11
         version: 4.1.11
     devDependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.896.0
+        version: 3.1050.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: ^3.896.0
+        version: 3.1050.0
       typescript:
         specifier: 5.9.3
         version: 5.9.3

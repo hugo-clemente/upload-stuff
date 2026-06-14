@@ -202,6 +202,14 @@ const storage = s3Adapter({
 
 The `config` field accepts the full `S3ClientConfig` from `@aws-sdk/client-s3`.
 
+### Peer dependencies
+
+`@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` (`>=3.700.0`) are **optional** peer dependencies — install them only if you use this adapter, so projects on another storage backend don't pull in the AWS SDK:
+
+```sh
+pnpm add @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+```
+
 ## Prisma adapter
 
 Import from `@upload-stuff/server/adapters/prisma`.
