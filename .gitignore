@@ -2,3 +2,8 @@ node_modules
 dist
 *.tsbuildinfo
 .DS_Store
+.next
+.source
+.vercel
+out
+next-env.d.ts

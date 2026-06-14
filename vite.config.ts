@@ -9,7 +9,13 @@ export default defineConfig({
     env: {
       builtin: true,
     },
-    ignorePatterns: ["**/dist/**", "**/node_modules/**"],
+    ignorePatterns: [
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/.next/**",
+      "**/.source/**",
+      "**/next-env.d.ts",
+    ],
     rules: {
       "constructor-super": "error",
       "for-direction": "error",
@@ -116,6 +122,12 @@ export default defineConfig({
           "prefer-const": "error",
           "prefer-rest-params": "error",
           "prefer-spread": "error",
+        },
+      },
+      {
+        files: ["apps/docs/**"],
+        rules: {
+          "typescript/no-explicit-any": "off",
         },
       },
     ],
