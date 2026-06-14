@@ -54,7 +54,9 @@ const buildServerUtils = <TFileUsageContext extends string>(
     await config.databaseAdapter.deleteFiles({
       fileIds,
       deleteFromStorage: async (fileKeys: string[]) => {
-        await config.storageAdapter.batchDeleteFiles({ fileKeys });
+        // throwIfError so a partial storage failure aborts the DB deletion —
+        // otherwise the rows vanish while the objects survive as orphans.
+        await config.storageAdapter.batchDeleteFiles({ fileKeys, throwIfError: true });
       },
     });
   };
@@ -90,6 +92,10 @@ const buildServerUtils = <TFileUsageContext extends string>(
         key,
       });
 
+      // DB row first (stored: false): if the storage upload below fails, this
+      // row is exactly what cleanUpFiles finds and reclaims. Uploading to
+      // storage first would leave an undiscoverable orphan object whenever the
+      // row insert fails.
       await config.databaseAdapter.createFiles({
         files: [
           {

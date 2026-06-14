@@ -29,6 +29,12 @@ describe("validateFiles", () => {
     expect(() => validateFiles([file(), file(), file()], config)).toThrowError(UploadStuffError);
   });
 
+  it("rejects any file when maxFileCount is 0", () => {
+    expect(() => validateFiles([file()], { ...config, maxFileCount: 0 })).toThrowError(
+      UploadStuffError,
+    );
+  });
+
   it("rejects a file over maxFileSize", () => {
     expect(() => validateFiles([file({ size: 6 * 1024 * 1024 })], config)).toThrowError(
       UploadStuffError,

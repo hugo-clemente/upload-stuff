@@ -11,7 +11,6 @@ export const uploadedFileSchema = initUploadFileSchema.extend({
   id: z.string(),
   key: z.string(),
   publicUrl: z.string().optional(),
-  size: z.number(),
 });
 export type UploadedFileData = z.infer<typeof uploadedFileSchema>;
 

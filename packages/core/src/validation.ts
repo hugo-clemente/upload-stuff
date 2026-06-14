@@ -1,7 +1,7 @@
 import { UploadStuffError } from "./errors";
 import type { AnyRouteConfig } from "./router-types";
 import type { InitUploadFileData } from "./schemas";
-import { acceptedFileTypes, getFileSizeInBytes } from "./utils/helpers";
+import { getFileSizeInBytes, getValidMimeTypes } from "./utils/helpers";
 
 /**
  * Shared file validation run on both the client (pre-flight) and the server
@@ -9,15 +9,14 @@ import { acceptedFileTypes, getFileSizeInBytes } from "./utils/helpers";
  * 400 instead of an unhandled 500.
  */
 export const validateFiles = (files: InitUploadFileData[], config: AnyRouteConfig): void => {
-  if (config.maxFileCount && files.length > config.maxFileCount) {
+  if (config.maxFileCount != null && files.length > config.maxFileCount) {
     throw new UploadStuffError({
       code: "BAD_REQUEST",
       message: `Too many files. Maximum allowed: ${config.maxFileCount}`,
     });
   }
 
-  const types = Array.isArray(config.type) ? config.type : [config.type];
-  const validMimeTypes = types.flatMap((type) => acceptedFileTypes[type]);
+  const validMimeTypes = getValidMimeTypes(config.type);
   const maxSize = getFileSizeInBytes(config.maxFileSize);
 
   for (const file of files) {

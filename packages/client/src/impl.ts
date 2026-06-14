@@ -16,7 +16,12 @@ import type {
   inferRouteInput,
   inferRouteServerData,
 } from "@upload-stuff/core";
-import { acceptedFileTypes, getFileSizeInBytes, validateFiles } from "@upload-stuff/core";
+import {
+  DEFAULT_BASE_PATH,
+  getFileSizeInBytes,
+  getValidMimeTypes,
+  validateFiles,
+} from "@upload-stuff/core";
 
 import { compressImage } from "./compress-images";
 
@@ -30,7 +35,7 @@ export interface CreateUploadStuffClientOptions {
 const getOptions = (options: CreateUploadStuffClientOptions) => {
   const { baseURL } = options;
 
-  const basePath = options.basePath ?? "/api/upload-stuff";
+  const basePath = options.basePath ?? DEFAULT_BASE_PATH;
 
   const client = hc<UploadStuffHTTPServerType>(new URL(basePath, baseURL).toString());
 
@@ -67,6 +72,10 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
   ): UseUploadStuffReturn<TRoute> => {
     const [isUploading, setIsUploading] = useState(false);
 
+    // Synchronous re-entrancy guard. `isUploading` state updates on the next
+    // render, so a second startUpload call in the same tick would slip past it
+    // and corrupt the shared progress/XHR refs below.
+    const isUploadingRef = useRef(false);
     const totalBytesRef = useRef(0);
     const uploadedBytesRef = useRef(0);
     const lastReportedPercentRef = useRef(0);
@@ -88,7 +97,7 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
       (...args: Parameters<(typeof client)[":endpoint"]["init-upload"]["$post"]>) => {
         return parseResponse(
           client[":endpoint"]["init-upload"].$post(...args),
-        ) as unknown as InitUploadResult;
+        ) as unknown as Promise<InitUploadResult>;
       },
       [],
     );
@@ -97,7 +106,7 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
       (...args: Parameters<(typeof client)[":endpoint"]["complete-upload"]["$post"]>) => {
         return parseResponse(
           client[":endpoint"]["complete-upload"].$post(...args),
-        ) as unknown as CompleteUploadResult<inferRouteServerData<TRoute>>;
+        ) as unknown as Promise<CompleteUploadResult<inferRouteServerData<TRoute>>>;
       },
       [],
     );
@@ -135,6 +144,10 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
       async (files: File[], input: any, runOpts?: StartUploadFnOptions) => {
         if (!routeConfig) throw new Error("Route config not loaded yet");
         if (!files || files.length === 0) return;
+        if (isUploadingRef.current) {
+          throw new Error("An upload is already in progress");
+        }
+        isUploadingRef.current = true;
 
         const signal = runOpts?.signal;
         let onAbort: (() => void) | undefined;
@@ -216,6 +229,19 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
             });
           }
 
+          // The abort signal only governs the byte transfer. With all files in
+          // storage, stop listening — aborting completion would fire both
+          // onUploadAborted and onClientUploadComplete for the same upload.
+          if (signal && onAbort) {
+            signal.removeEventListener("abort", onAbort);
+            onAbort = undefined;
+          }
+          // Abort fired between the last upload finishing and this point: the
+          // listener already reported it, so don't finalize the batch.
+          if (signal?.aborted) {
+            throw new Error("Upload aborted.");
+          }
+
           const verified = await completeMutation({
             param: {
               endpoint: resolvedEndpoint as string,
@@ -232,11 +258,16 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
           return;
         } catch (e) {
           const err = e instanceof Error ? e : new Error("An error occurred during upload.");
-          opts?.onUploadError?.(err);
+          // An abort is already reported through onUploadAborted — don't
+          // double-report it as an error.
+          if (!signal?.aborted) {
+            opts?.onUploadError?.(err);
+          }
           throw err;
         } finally {
           if (signal && onAbort) signal.removeEventListener("abort", onAbort);
           currentXhrsRef.current = [];
+          isUploadingRef.current = false;
           setIsUploading(false);
         }
       },
@@ -431,7 +462,4 @@ const uploadFileWithProgress = async ({
   });
 };
 
-const getAcceptFromType = (type: AnyRouteConfig["type"]) => {
-  const types = Array.isArray(type) ? type : [type];
-  return types.flatMap((t) => acceptedFileTypes[t]).join(",");
-};
+const getAcceptFromType = (type: AnyRouteConfig["type"]) => getValidMimeTypes(type).join(",");

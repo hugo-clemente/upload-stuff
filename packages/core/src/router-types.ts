@@ -148,7 +148,7 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
 
   onUploadComplete: <TOut extends Json | void>(
     fn: TParams["_completeFnData"] extends UnsetMarker
-      ? UploadCompleteFn<TParams["_ctx"], TParams["_input"]["out"], TParams["_metadata"], TOut>
+      ? UploadCompleteFn<TParams["_ctx"], TParams["_input"]["out"], TParams["_middlewareData"], TOut>
       : ErrorMessage<"onUploadComplete has already been set">,
   ) => UploadBuilder<
     {

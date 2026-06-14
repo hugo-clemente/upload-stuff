@@ -95,42 +95,30 @@ export const s3Adapter = (params: {
         const actualEtag = response.ETag?.replace(/"/g, "") || "";
         const lastModified = response.LastModified;
 
-        const validations: Array<{ isValid: boolean; error: string }> = [];
+        const errors: string[] = [];
 
         if (params.expectedSize && actualSize !== params.expectedSize) {
-          validations.push({
-            isValid: false,
-            error: `Size mismatch: expected ${params.expectedSize}, got ${actualSize}`,
-          });
+          errors.push(`Size mismatch: expected ${params.expectedSize}, got ${actualSize}`);
         }
 
         if (params.expectedContentType && actualContentType !== params.expectedContentType) {
-          validations.push({
-            isValid: false,
-            error: `Content type mismatch: expected ${params.expectedContentType}, got ${actualContentType}`,
-          });
+          errors.push(
+            `Content type mismatch: expected ${params.expectedContentType}, got ${actualContentType}`,
+          );
         }
 
         if (params.clientEtag && actualEtag !== params.clientEtag) {
-          validations.push({
-            isValid: false,
-            error: `ETag mismatch: expected ${params.clientEtag}, got ${actualEtag}`,
-          });
+          errors.push(`ETag mismatch: expected ${params.clientEtag}, got ${actualEtag}`);
         }
 
         if (actualSize === 0) {
-          validations.push({
-            isValid: false,
-            error: "File is empty",
-          });
+          errors.push("File is empty");
         }
-
-        const failedValidation = validations.find((v) => !v.isValid);
 
         return {
           exists: true,
-          isValid: !failedValidation,
-          error: failedValidation?.error,
+          isValid: errors.length === 0,
+          error: errors[0],
           etag: actualEtag,
           actualSize,
           lastModified,
@@ -138,7 +126,15 @@ export const s3Adapter = (params: {
 
         // oxlint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
-        if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
+        // Only a missing object is the client's fault (file never uploaded).
+        // Everything else — throttling, credentials, S3 5xx, network — is a
+        // server-side failure and must propagate as a retryable 500, not get
+        // reported to the client as an invalid upload (400).
+        if (
+          error.name === "NotFound" ||
+          error.name === "NoSuchKey" ||
+          error.$metadata?.httpStatusCode === 404
+        ) {
           return {
             exists: false,
             isValid: false,
@@ -146,11 +142,7 @@ export const s3Adapter = (params: {
           };
         }
 
-        return {
-          exists: false,
-          isValid: false,
-          error: `Verification failed: ${error.message}`,
-        };
+        throw error;
       }
     },
 

@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import {
+  DEFAULT_BASE_PATH,
   UploadStuffError,
   initUploadFileSchema,
   type UploadStuffRouter,
@@ -22,12 +23,20 @@ const handleError = (c: Context, error: unknown) => {
   throw error;
 };
 
+const respond = async <T>(c: Context, fn: () => T | Promise<T>) => {
+  try {
+    return c.json(await fn());
+  } catch (error) {
+    return handleError(c, error);
+  }
+};
+
 export interface UploadStuffHTTPServerConfig {
   basePath: string;
 }
 
 const defaultConfig: UploadStuffHTTPServerConfig = {
-  basePath: "/api/upload-stuff",
+  basePath: DEFAULT_BASE_PATH,
 };
 
 const initUploadHandlerSchema = z.object({
@@ -77,46 +86,16 @@ const createRoutes = ({
 
   const route = new Hono()
     .use(createContextMiddleware)
-    .get("/:endpoint/route-config", async (c) => {
-      const endpoint = getEndpoint(c);
-
-      try {
-        const config = routeHandler.getConfig({ endpoint });
-
-        return c.json(config);
-      } catch (error) {
-        return handleError(c, error);
-      }
-    })
-    .post("/:endpoint/init-upload", zValidator("json", initUploadHandlerSchema), async (c) => {
-      const endpoint = getEndpoint(c);
-      const ctx = c.get("ctx");
-
-      const data = c.req.valid("json");
-
-      try {
-        const result = await routeHandler.initUpload(endpoint, data, ctx);
-        return c.json(result);
-      } catch (error) {
-        return handleError(c, error);
-      }
-    })
-    .post(
-      "/:endpoint/complete-upload",
-      zValidator("json", completeUploadHandlerSchema),
-      async (c) => {
-        const endpoint = getEndpoint(c);
-        const ctx = c.get("ctx");
-
-        const data = c.req.valid("json");
-
-        try {
-          const result = await routeHandler.completeUpload(endpoint, data, ctx);
-          return c.json(result);
-        } catch (error) {
-          return handleError(c, error);
-        }
-      },
+    .get("/:endpoint/route-config", (c) =>
+      respond(c, () => routeHandler.getConfig({ endpoint: getEndpoint(c) })),
+    )
+    .post("/:endpoint/init-upload", zValidator("json", initUploadHandlerSchema), (c) =>
+      respond(c, () => routeHandler.initUpload(getEndpoint(c), c.req.valid("json"), c.get("ctx"))),
+    )
+    .post("/:endpoint/complete-upload", zValidator("json", completeUploadHandlerSchema), (c) =>
+      respond(c, () =>
+        routeHandler.completeUpload(getEndpoint(c), c.req.valid("json"), c.get("ctx")),
+      ),
     );
 
   return route;

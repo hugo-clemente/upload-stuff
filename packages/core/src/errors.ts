@@ -28,7 +28,5 @@ export class UploadStuffError extends Error {
     this.name = "UploadStuffError";
     this.code = code;
     this.status = uploadStuffErrorCodes[code];
-
-    this.cause ??= cause;
   }
 }

@@ -19,7 +19,6 @@ type PrismaClientLike = {
     updateMany: (args: any) => Promise<{ count: number }>;
     deleteMany: (args: any) => Promise<any>;
   };
-  $transaction: (fn: (tx: PrismaClientLike) => Promise<any>) => Promise<any>;
 };
 /* oxlint-enable @typescript-eslint/no-explicit-any */
 
@@ -108,16 +107,19 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
         where: {
           id: { in: params.fileIds },
         },
+        select: { key: true },
       });
 
-      await prisma.$transaction(async (tx) => {
-        await tx.file.deleteMany({
-          where: {
-            id: { in: params.fileIds },
-          },
-        });
+      // Storage first: a failed storage delete throws and keeps the DB rows,
+      // so a retry can find the keys again (re-deleting already-removed keys
+      // is idempotent). Deleting the rows first would commit while storage
+      // objects survive — orphans nothing can ever find or clean up.
+      await params.deleteFromStorage(files.map((file) => file.key));
 
-        await params.deleteFromStorage(files.map((file) => file.key));
+      await prisma.file.deleteMany({
+        where: {
+          id: { in: params.fileIds },
+        },
       });
     },
   };
