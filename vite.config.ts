@@ -128,6 +128,7 @@ export default defineConfig({
         files: ["apps/docs/**"],
         rules: {
           "typescript/no-explicit-any": "off",
+          "typescript/unbound-method": "off",
         },
       },
     ],
