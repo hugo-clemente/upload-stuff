@@ -90,6 +90,8 @@ export const fileRouter = {
     maxFileCount: 1,
   })
     .middleware(({ ctx }) => ({ userId: ctx.userId }))
+    // Runs on your server after S3 confirms the upload. Whatever you return
+    // here is sent to the client's onClientUploadComplete, fully typed.
     .onUploadComplete(({ files, middlewareData }) => {
       console.log("Uploaded by", middlewareData.userId, files);
     })
@@ -128,6 +130,12 @@ export const { GET, POST } = toNextJsHandler({
 <Step>
 
 ### Create the client helpers and upload
+
+<Callout title="This file is the type bridge">
+Passing your server's `FileRouter` type to `createUploadStuffReactHelpers` is what
+connects the two ends — every type the client hook infers flows from this one
+import. See [Type safety](/docs/type-safety) for what that buys you.
+</Callout>
 
 ```ts
 // lib/upload-stuff-client.ts
@@ -168,6 +176,6 @@ export function AvatarUpload() {
 </Steps>
 
 That is the whole flow: a typed router on the server, a fetch-compatible handler,
-and an inferred client hook. Next, read [Core concepts](/docs/concepts) to
-understand the presigned-upload lifecycle, or browse the
-[API reference](/docs/api).
+and an inferred client hook. Next, see [Type safety](/docs/type-safety) for how
+the router and client stay in sync, read [Core concepts](/docs/concepts) for the
+presigned-upload lifecycle, or browse the [API reference](/docs/api).
