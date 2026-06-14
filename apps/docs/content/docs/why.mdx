@@ -1,0 +1,71 @@
+---
+title: Why upload-stuff
+description: How upload-stuff compares to UploadThing and a hand-rolled presigned-S3 flow.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+
+upload-stuff sits between a managed upload service and rolling your own presigned
+flow. You bring your own S3 bucket; upload-stuff gives you the typed router,
+the presigned-URL handshake, the client hooks, and the database bookkeeping.
+
+## The trade-off, stated plainly
+
+UploadThing manages storage for you — no S3 account, no bucket, no CORS. That
+convenience is also a dependency and a cost model. **upload-stuff expects your
+own S3 bucket and credentials.** In exchange you own your data, your bucket
+policy, and your bill, and you get an end-to-end typed API over it.
+
+If you never want to touch S3, a managed service is the simpler choice. If you
+already have (or want) your own bucket, upload-stuff removes the boilerplate
+without taking over your storage.
+
+## The same upload, three ways
+
+<Tabs items={['upload-stuff', 'UploadThing', 'Raw presigned URL']}>
+
+<Tab value="upload-stuff">
+
+```ts
+// One typed route. The client hook infers its types from this definition.
+avatar: f({ type: "image", usageContext: "avatar", maxFileSize: "4MB" })
+  .middleware(({ ctx }) => ({ userId: ctx.userId }))
+  .onUploadComplete(({ files, middlewareData }) => {
+    // files + middlewareData are fully typed
+  })
+  .build();
+```
+
+</Tab>
+
+<Tab value="UploadThing">
+
+```ts
+// Managed storage — no bucket, but uploads live on UploadThing's infrastructure.
+avatar: f({ image: { maxFileSize: "4MB" } })
+  .middleware(async ({ req }) => ({ userId: await auth(req) }))
+  .onUploadComplete(({ metadata, file }) => {
+    // file.url points at UploadThing's CDN, not your bucket
+  });
+```
+
+</Tab>
+
+<Tab value="Raw presigned URL">
+
+```ts
+// Hand-rolled: you write (and keep correct) every step yourself.
+const command = new PutObjectCommand({ Bucket, Key, ContentType });
+const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
+await fetch(url, { method: "PUT", body: file });
+// ...then the verification, the DB row, the cleanup of abandoned uploads,
+// and the typed client wiring — all by hand.
+```
+
+</Tab>
+
+</Tabs>
+
+upload-stuff keeps the bring-your-own-bucket model of the raw approach, but gives
+you the typed router, the verified complete step, the cleanup utilities, and the
+inferred client hooks instead of hand-writing them.

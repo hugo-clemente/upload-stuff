@@ -1,0 +1,173 @@
+---
+title: Quickstart
+description: From a configured S3 bucket to a working Next.js upload in about five minutes.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Step, Steps } from 'fumadocs-ui/components/steps';
+
+<Callout title="Prerequisites">
+This quickstart assumes you already have:
+
+- A **Next.js App Router** project.
+- An **S3 bucket** with CORS configured for browser `PUT` uploads, and AWS
+  credentials available as environment variables.
+
+Setting up the bucket and its CORS policy is AWS-side work and outside this
+library — see the
+[AWS S3 CORS guide](https://docs.aws.amazon.com/AmazonS3/latest/userguide/ManageCorsUsing.html).
+"Type-checks" (every sample below is verified at build time) and "produces a
+working upload" are separate guarantees; the latter depends on your bucket being
+reachable and correctly permissioned.
+</Callout>
+
+<Callout type="info" title="Not on Next.js?">
+The v1 quickstart targets the Next.js App Router. The library itself works on any
+fetch-compatible runtime; dedicated guides for other runtimes are coming. You can
+still follow the concepts below — only the handler wiring is Next-specific.
+</Callout>
+
+Install the packages:
+
+```sh
+npm install @upload-stuff/server @upload-stuff/client
+```
+
+<Steps>
+
+<Step>
+
+### Create an `UploadStuff` instance
+
+```ts
+// lib/upload-stuff.ts
+import { UploadStuff } from "@upload-stuff/server";
+import { s3Adapter } from "@upload-stuff/server/adapters/s3";
+import { prismaAdapter } from "@upload-stuff/server/adapters/prisma";
+import { prisma } from "./prisma";
+
+type FileUsageContext = "avatar" | "document";
+
+export const uploadStuff = UploadStuff<FileUsageContext>({
+  storageAdapter: s3Adapter({
+    config: {
+      region: "us-east-1",
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+    },
+    bucket: process.env.S3_BUCKET!,
+  }),
+  databaseAdapter: prismaAdapter({ prisma }),
+  filePublicUrlGenerator: ({ key }) =>
+    `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${key}`,
+});
+```
+
+</Step>
+
+<Step>
+
+### Define a file router
+
+```ts
+// lib/file-router.ts
+import { z } from "zod";
+import { createUploadStuffRouter } from "@upload-stuff/server";
+import { uploadStuff } from "./upload-stuff";
+
+type Context = { userId: string };
+
+const f = createUploadStuffRouter<Context, typeof uploadStuff>();
+
+export const fileRouter = {
+  avatar: f({
+    isPublic: true,
+    type: "image",
+    usageContext: "avatar",
+    maxFileSize: "4MB",
+    maxFileCount: 1,
+  })
+    .middleware(({ ctx }) => ({ userId: ctx.userId }))
+    .onUploadComplete(({ files, middlewareData }) => {
+      console.log("Uploaded by", middlewareData.userId, files);
+    })
+    .build(),
+};
+
+export type FileRouter = typeof fileRouter;
+```
+
+</Step>
+
+<Step>
+
+### Wire the Next.js route handler
+
+```ts
+// app/api/upload-stuff/[...uploadStuff]/route.ts
+import { toNextJsHandler } from "@upload-stuff/server/next";
+import { uploadStuff } from "@/lib/upload-stuff";
+import { fileRouter } from "@/lib/file-router";
+import { auth } from "@/lib/auth";
+
+export const { GET, POST } = toNextJsHandler({
+  uploadStuff,
+  fileRouter,
+  config: {},
+  createContext: async ({ headers }) => {
+    const session = await auth(headers);
+    return { userId: session.userId };
+  },
+});
+```
+
+</Step>
+
+<Step>
+
+### Create the client helpers and upload
+
+```ts
+// lib/upload-stuff-client.ts
+"use client";
+
+import { createUploadStuffReactHelpers } from "@upload-stuff/client";
+import type { FileRouter } from "@/lib/file-router";
+
+export const { useUploadStuff } = createUploadStuffReactHelpers<FileRouter>({
+  baseURL: process.env.NEXT_PUBLIC_APP_URL!,
+});
+```
+
+```tsx
+"use client";
+
+import { useUploadStuff } from "@/lib/upload-stuff-client";
+
+export function AvatarUpload() {
+  const { startUpload, isUploading, accept } = useUploadStuff((r) => r.avatar, {
+    onClientUploadComplete: (res) => console.log("Done:", res.files),
+    onUploadError: (err) => console.error(err.message),
+  });
+
+  return (
+    <input
+      type="file"
+      accept={accept}
+      disabled={isUploading}
+      onChange={(e) => startUpload(Array.from(e.target.files ?? []))}
+    />
+  );
+}
+```
+
+</Step>
+
+</Steps>
+
+That is the whole flow: a typed router on the server, a fetch-compatible handler,
+and an inferred client hook. Next, read [Core concepts](/docs/concepts) to
+understand the presigned-upload lifecycle, or browse the
+[API reference](/docs/api).

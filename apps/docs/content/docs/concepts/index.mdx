@@ -1,0 +1,65 @@
+---
+title: Core concepts
+description: The file router, the presigned-upload lifecycle, adapters, usage contexts, and cleanup.
+---
+
+upload-stuff has a small set of moving parts. Once these click, the rest of the
+API follows.
+
+## The file router
+
+A **file router** is a typed map of named routes. Each route declares what it
+accepts (`type`, `maxFileSize`, `maxFileCount`), a `usageContext`, and a builder
+chain (`.input()`, `.middleware()`, `.onUploadComplete()`). The router type is
+exported once and consumed on the client, which is how the client hook infers its
+own types — there is a single source of truth for every route's shape.
+
+## The presigned-upload lifecycle
+
+Uploads never flow through your server. The browser uploads directly to S3 using
+a short-lived presigned URL. The server's job is to authorize, hand out the URL,
+and verify completion:
+
+1. **Init** — the client hook calls the server with the route and the files. The
+   server runs your middleware (auth, input parsing), creates pending file rows
+   through the database adapter, presigns `PUT` URLs through the storage adapter,
+   and returns them.
+2. **Upload** — the client `PUT`s the bytes directly to S3 using the presigned
+   URLs. Your server never sees the file bytes.
+3. **Complete** — the client tells the server the upload finished. The server
+   verifies the objects exist in storage, marks the rows stored, runs your
+   `onUploadComplete`, and returns its (typed) result to the client.
+
+The two server round-trips are **init** (authorize + presign) and **complete**
+(verify + persist). Files that are initialized but never completed are left as
+pending rows — see [Cleanup](#cleanup) below.
+
+## Adapters
+
+upload-stuff talks to storage and to your database through two interfaces, so the
+core stays backend-agnostic:
+
+- **Storage adapter** — presigns URLs, verifies objects, deletes objects. The
+  built-in `s3Adapter` implements it; the `StorageAdapter` interface lets you
+  target any object store.
+- **Database adapter** — creates pending file rows, marks them stored, finds
+  abandoned uploads, and deletes rows. The `prismaAdapter` is a reference
+  implementation for one `File` model; the `DatabaseAdapter` interface lets you
+  use any ORM.
+
+See the [API reference](/docs/api) for both interfaces.
+
+## Usage contexts
+
+Every route carries a `usageContext` — a string discriminator (`"avatar"`,
+`"document"`, …) you define as a type parameter. It is stored on each file row so
+you can query, authorize, and clean up by context. The set of valid contexts is a
+TypeScript union you own, so misspelling one is a compile error.
+
+## Cleanup
+
+Because init creates a row before the client finishes uploading, an abandoned
+upload leaves a pending row and (sometimes) no object. `serverUtils.cleanUpFiles()`
+finds rows older than a threshold that were never completed and removes them. Run
+it on a schedule (a cron job, a queue worker) to keep storage and the database in
+sync. The cleanup recipe will walk through wiring it to a cron.
