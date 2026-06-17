@@ -6,17 +6,9 @@ import type { StorageAdapter, StorageObjectInfo } from "@upload-stuff/core";
 export const s3Adapter = (params: {
   config: AWS.S3ClientConfig;
   bucket: string;
-  /**
-   * Maps a stored object to its S3 object metadata (`x-amz-meta-*`). Defaults to
-   * none. Note: object metadata is returned on every GetObject, so do not place
-   * a `scope` that encodes a user/principal id here on public buckets without
-   * intending to expose it.
-   */
-  objectMetadata?: (info: StorageObjectInfo) => Record<string, string>;
 }): StorageAdapter => {
   const s3Client = new AWS.S3Client(params.config);
   const bucket = params.bucket;
-  const objectMetadata = params.objectMetadata ?? (() => ({}));
 
   const fileExists = async (key: string): Promise<boolean> => {
     const command = new AWS.HeadObjectCommand({
@@ -47,7 +39,7 @@ export const s3Adapter = (params: {
     Key: info.key,
     ContentType: info.contentType,
     ContentLength: info.size,
-    Metadata: objectMetadata(info),
+    Metadata: info.objectMetadata ?? {},
     ACL: info.isPublic ? "public-read" : "private",
   });
 

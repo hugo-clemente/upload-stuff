@@ -54,6 +54,7 @@ export const createCore = <TFileUsageContext extends string>(
     fileKeyGenerator,
     fileIdGenerator,
     filePublicUrlGenerator,
+    objectMetadata,
   } = config;
 
   const initUpload: InitUploadHandler<TFileUsageContext> = async ({
@@ -102,8 +103,16 @@ export const createCore = <TFileUsageContext extends string>(
             size: file.size,
             usageContext: config.usageContext,
             isPublic: config.isPublic,
-            scope,
-            fields: fieldValues,
+            objectMetadata: objectMetadata?.({
+              key,
+              filename: file.filename,
+              size: file.size,
+              contentType: file.contentType,
+              usageContext: config.usageContext,
+              isPublic: config.isPublic,
+              scope,
+              ...fieldValues,
+            }),
           }),
         ]);
 

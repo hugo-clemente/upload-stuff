@@ -101,8 +101,31 @@ export type DatabaseAdapter<TFileUsageContext extends string = string> = {
 export type FileUploadContent = string | Uint8Array;
 
 /**
- * The persisted row data a storage adapter may surface as object metadata. Carries
- * the opaque `scope` and any declared custom `fields`, but not storage internals.
+ * The row data passed to an `objectMetadata` resolver: the opaque `scope`, the
+ * base file columns, and the typed declared custom fields.
+ */
+export type ObjectMetadataInput<
+  TFileUsageContext extends string,
+  TFields extends FieldsDeclaration,
+> = {
+  key: string;
+  filename: string;
+  size: number;
+  contentType: string;
+  usageContext: TFileUsageContext;
+  isPublic: boolean;
+  scope?: string;
+} & InferFieldValues<TFields>;
+
+/** Maps a stored file's row onto an object-metadata key/value map. */
+export type ObjectMetadataResolver<
+  TFileUsageContext extends string,
+  TFields extends FieldsDeclaration,
+> = (file: ObjectMetadataInput<TFileUsageContext, TFields>) => Record<string, string>;
+
+/**
+ * What a storage adapter needs to store an object: the base columns plus the
+ * already-resolved object metadata (the core computes it from `objectMetadata`).
  */
 export type StorageObjectInfo = {
   key: string;
@@ -110,8 +133,7 @@ export type StorageObjectInfo = {
   size: number;
   usageContext: string;
   isPublic: boolean;
-  scope?: string;
-  fields?: Record<string, unknown>;
+  objectMetadata?: Record<string, string>;
 };
 
 export type StorageAdapter = {
@@ -157,7 +179,7 @@ export type FilePublicUrlGenerator = (params: { key: string }) => string | Promi
 
 export type UploadStuffConfig<
   TFileUsageContext extends string,
-  TFields extends FieldsDeclaration = Record<string, never>,
+  TFields extends FieldsDeclaration = Record<never, never>,
 > = {
   storageAdapter: StorageAdapter;
   databaseAdapter: DatabaseAdapter<TFileUsageContext>;
@@ -166,11 +188,16 @@ export type UploadStuffConfig<
   filePublicUrlGenerator: FilePublicUrlGenerator;
   /** Central declaration of the custom columns this instance persists. */
   fields?: TFields;
+  /**
+   * Resolve object-storage metadata (e.g. S3 `x-amz-meta-*`) from each row,
+   * typed against the declared `fields`. The storage adapter writes the result.
+   */
+  objectMetadata?: ObjectMetadataResolver<TFileUsageContext, TFields>;
 };
 
 export type CreateUploadStuffConfig<
   TFileUsageContext extends string,
-  TFields extends FieldsDeclaration = Record<string, never>,
+  TFields extends FieldsDeclaration = Record<never, never>,
 > = SetOptional<
   UploadStuffConfig<TFileUsageContext, TFields>,
   "fileIdGenerator" | "fileKeyGenerator"

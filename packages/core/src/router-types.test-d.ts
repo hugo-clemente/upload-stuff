@@ -35,7 +35,7 @@ describe("UploadBuilder", () => {
       _input: { in: UnsetMarker; out: UnsetMarker };
       _scope: UnsetMarker;
       _fields: UnsetMarker;
-      _fieldsDeclaration: Record<string, never>;
+      _fieldsDeclaration: Record<never, never>;
       _middlewareData: { role: string };
       _ctx: { userId?: string };
       _completeFnData: UnsetMarker;

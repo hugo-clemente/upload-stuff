@@ -10,6 +10,7 @@ import type {
   FileKeyGenerator,
   FilePublicUrlGenerator,
   FileUploadContent,
+  ObjectMetadataResolver,
   StorageAdapter,
   UploadStuffConfig,
 } from "@upload-stuff/core";
@@ -89,8 +90,9 @@ const buildServerUtils = <TFileUsageContext extends string>(
         contentType: params.data.contentType,
         size: params.data.size,
         usageContext: params.data.usageContext,
-        scope: params.data.scope,
         isPublic: params.data.isPublic,
+        // Note: the typed `objectMetadata` resolver runs on the presigned-upload
+        // flow; this direct server-upload path does not apply it.
 
         content: params.content,
       });
@@ -112,7 +114,7 @@ const buildServerUtils = <TFileUsageContext extends string>(
 
 export type UploadStuff<
   TFileUsageContext extends string,
-  TFields extends FieldsDeclaration = Record<string, never>,
+  TFields extends FieldsDeclaration = Record<never, never>,
 > = {
   $types: {
     fileUsageContext: TFileUsageContext;
@@ -124,6 +126,7 @@ export type UploadStuff<
   __fileIdGenerator: FileIdGenerator;
   __fileKeyGenerator: FileKeyGenerator;
   __filePublicUrlGenerator: FilePublicUrlGenerator;
+  __objectMetadata: ObjectMetadataResolver<TFileUsageContext, TFields> | undefined;
 };
 
 // oxlint-disable-next-line @typescript-eslint/no-explicit-any
@@ -140,7 +143,7 @@ export type AnyUploadStuff = UploadStuff<any, any>;
  */
 export const UploadStuff =
   <TFileUsageContext extends string = string>() =>
-  <TFields extends FieldsDeclaration = Record<string, never>>(
+  <TFields extends FieldsDeclaration = Record<never, never>>(
     config: CreateUploadStuffConfig<TFileUsageContext, TFields>,
   ): UploadStuff<TFileUsageContext, TFields> => {
     const {
@@ -149,6 +152,7 @@ export const UploadStuff =
       fileIdGenerator = defaultFileIdGenerator,
       fileKeyGenerator = defaultFileKeyGenerator,
       filePublicUrlGenerator,
+      objectMetadata,
     } = config;
 
     return {
@@ -171,5 +175,6 @@ export const UploadStuff =
       __fileIdGenerator: fileIdGenerator,
       __fileKeyGenerator: fileKeyGenerator,
       __filePublicUrlGenerator: filePublicUrlGenerator,
+      __objectMetadata: objectMetadata,
     };
   };

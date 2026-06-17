@@ -11,7 +11,7 @@ export type { UploadStuffHTTPServerType } from "./http-server";
 export const toNextJsHandler = <
   TContext extends ValidContextObject,
   TFileUsageContext extends string,
-  TFields extends FieldsDeclaration = Record<string, never>,
+  TFields extends FieldsDeclaration = Record<never, never>,
 >({
   fileRouter,
   uploadStuff,

@@ -53,8 +53,6 @@ export const uploadStuff = UploadStuff<FileUsageContext>()({
       },
     },
     bucket: process.env.S3_BUCKET!,
-    // Optional — map persisted row data onto S3 object metadata. Defaults to none.
-    // objectMetadata: (file) => ({ scope: file.scope ?? "" }),
   }),
   databaseAdapter: prismaAdapter({ prisma }),
   filePublicUrlGenerator: ({ key }) => `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${key}`,
@@ -62,6 +60,9 @@ export const uploadStuff = UploadStuff<FileUsageContext>()({
   fields: {
     entityId: { type: "string", required: false },
   },
+  // Optional — write object-storage metadata, typed against `fields` above.
+  // file.entityId is `string | undefined`, file.scope is `string | undefined`.
+  objectMetadata: (file) => ({ entity: file.entityId ?? "", owner: file.scope ?? "" }),
 });
 ```
 
@@ -219,7 +220,7 @@ const storage = s3Adapter({
 
 The `config` field accepts the full `S3ClientConfig` from `@aws-sdk/client-s3`.
 
-Pass `objectMetadata: (file) => Record<string, string>` to write S3 object metadata derived from the stored row, e.g. `(file) => ({ scope: file.scope ?? "" })`. It defaults to writing none. Object metadata is returned on every `GetObject`, so avoid placing a `scope` that encodes a user id on public buckets unless you intend to expose it.
+Object-storage metadata is configured by `objectMetadata` on `UploadStuff(...)` (typed against your `fields`), not on the adapter — the adapter just writes whatever the core resolves. It defaults to none. Object metadata is returned on every `GetObject`, so avoid exposing a `scope` that encodes a user id on public buckets unless you intend to.
 
 ### Peer dependencies
 
