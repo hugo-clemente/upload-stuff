@@ -1,11 +1,16 @@
-/* oxlint-disable @typescript-eslint/no-explicit-any */
 import { createId } from "@paralleldrive/cuid2";
 import { subHours } from "date-fns";
 
 import type {
   CreateUploadStuffConfig,
+  DatabaseAdapter,
   DatabaseFile,
+  FieldsDeclaration,
+  FileIdGenerator,
+  FileKeyGenerator,
+  FilePublicUrlGenerator,
   FileUploadContent,
+  StorageAdapter,
   UploadStuffConfig,
 } from "@upload-stuff/core";
 
@@ -16,35 +21,6 @@ const defaultFileKeyGenerator = (params: {
   usageContext: string;
 }) => {
   return `${params.fileId}-${params.filename}`;
-};
-
-export const UploadStuff = <TFileUsageContext extends string>({
-  storageAdapter,
-  databaseAdapter,
-  fileIdGenerator = defaultFileIdGenerator,
-  fileKeyGenerator = defaultFileKeyGenerator,
-  filePublicUrlGenerator,
-}: CreateUploadStuffConfig<TFileUsageContext>) => {
-  return {
-    $types: undefined as unknown as {
-      fileUsageContext: TFileUsageContext;
-    },
-
-    serverUtils: buildServerUtils({
-      storageAdapter,
-      databaseAdapter,
-      fileIdGenerator,
-      fileKeyGenerator,
-      filePublicUrlGenerator,
-    }),
-
-    __storageAdapter: storageAdapter,
-    __databaseAdapter: databaseAdapter,
-
-    __fileIdGenerator: fileIdGenerator,
-    __fileKeyGenerator: fileKeyGenerator,
-    __filePublicUrlGenerator: filePublicUrlGenerator,
-  };
 };
 
 const buildServerUtils = <TFileUsageContext extends string>(
@@ -113,8 +89,7 @@ const buildServerUtils = <TFileUsageContext extends string>(
         contentType: params.data.contentType,
         size: params.data.size,
         usageContext: params.data.usageContext,
-        entityId: params.data.entityId,
-        userId: params.data.uploadedBy,
+        scope: params.data.scope,
         isPublic: params.data.isPublic,
 
         content: params.content,
@@ -135,8 +110,66 @@ const buildServerUtils = <TFileUsageContext extends string>(
   };
 };
 
-export type UploadStuff<TFileUsageContext extends string> = ReturnType<
-  typeof UploadStuff<TFileUsageContext>
->;
+export type UploadStuff<
+  TFileUsageContext extends string,
+  TFields extends FieldsDeclaration = Record<string, never>,
+> = {
+  $types: {
+    fileUsageContext: TFileUsageContext;
+    fields: TFields;
+  };
+  serverUtils: ReturnType<typeof buildServerUtils<TFileUsageContext>>;
+  __storageAdapter: StorageAdapter;
+  __databaseAdapter: DatabaseAdapter<TFileUsageContext>;
+  __fileIdGenerator: FileIdGenerator;
+  __fileKeyGenerator: FileKeyGenerator;
+  __filePublicUrlGenerator: FilePublicUrlGenerator;
+};
 
-export type AnyUploadStuff = UploadStuff<any>;
+// oxlint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyUploadStuff = UploadStuff<any, any>;
+
+/**
+ * Create an UploadStuff instance. Curried so the file-usage-context union can be
+ * given explicitly while the custom-`fields` declaration is inferred from the
+ * config (TypeScript can't partially infer generics in a single call).
+ *
+ * ```ts
+ * const uploadStuff = UploadStuff<"avatar" | "document">()({ ...config });
+ * ```
+ */
+export const UploadStuff =
+  <TFileUsageContext extends string = string>() =>
+  <TFields extends FieldsDeclaration = Record<string, never>>(
+    config: CreateUploadStuffConfig<TFileUsageContext, TFields>,
+  ): UploadStuff<TFileUsageContext, TFields> => {
+    const {
+      storageAdapter,
+      databaseAdapter,
+      fileIdGenerator = defaultFileIdGenerator,
+      fileKeyGenerator = defaultFileKeyGenerator,
+      filePublicUrlGenerator,
+    } = config;
+
+    return {
+      $types: undefined as unknown as {
+        fileUsageContext: TFileUsageContext;
+        fields: TFields;
+      },
+
+      serverUtils: buildServerUtils({
+        storageAdapter,
+        databaseAdapter,
+        fileIdGenerator,
+        fileKeyGenerator,
+        filePublicUrlGenerator,
+      }),
+
+      __storageAdapter: storageAdapter,
+      __databaseAdapter: databaseAdapter,
+
+      __fileIdGenerator: fileIdGenerator,
+      __fileKeyGenerator: fileKeyGenerator,
+      __filePublicUrlGenerator: filePublicUrlGenerator,
+    };
+  };

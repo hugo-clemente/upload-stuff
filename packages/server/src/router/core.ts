@@ -8,10 +8,8 @@ import {
   type InitUploadFileData,
   type InitUploadResult,
   type Json,
-  type MetadataObject,
   type RouteConfig,
   type UploadStuffConfig,
-  type ValidContextObject,
   type ValidMiddlewareObject,
 } from "@upload-stuff/core";
 
@@ -20,15 +18,15 @@ interface InitUploadHandler<TFileUsageContext extends string> {
     files: Array<InitUploadFileData>;
     config: RouteConfig<TFileUsageContext>;
     input: Json;
-    metadata: MetadataObject;
+    scope: string | undefined;
+    fieldValues: Record<string, unknown>;
     middlewareData: ValidMiddlewareObject;
-    ctx: ValidContextObject;
     endpoint: string;
   }): Promise<InitUploadResult>;
 }
 
 interface CompleteUploadHandler {
-  (params: { batchId: string; ctx: ValidContextObject; endpoint: string }): Promise<
+  (params: { batchId: string; scope: string | undefined; endpoint: string }): Promise<
     Omit<CompleteUploadResult, "serverData"> & {
       input: Json;
       middlewareData: ValidMiddlewareObject;
@@ -60,10 +58,10 @@ export const createCore = <TFileUsageContext extends string>(
 
   const initUpload: InitUploadHandler<TFileUsageContext> = async ({
     files,
-    ctx,
     config,
     input,
-    metadata,
+    scope,
+    fieldValues,
     middlewareData,
     endpoint,
   }) => {
@@ -104,8 +102,8 @@ export const createCore = <TFileUsageContext extends string>(
             size: file.size,
             usageContext: config.usageContext,
             isPublic: config.isPublic,
-            userId: ctx.userId,
-            entityId: metadata.entityId,
+            scope,
+            fields: fieldValues,
           }),
         ]);
 
@@ -121,14 +119,16 @@ export const createCore = <TFileUsageContext extends string>(
         filename: file.filename,
         size: file.size,
         contentType: file.contentType,
-        uploadedBy: ctx.userId,
         batchId,
         // oxlint-disable-next-line @typescript-eslint/no-explicit-any
         uploadSessionData: uploadSessionDataParse.data as any,
         usageContext: config.usageContext,
         isPublic: config.isPublic,
         stored: false,
-        entityId: metadata.entityId,
+        scope,
+        // Declared custom columns ride along structurally; the adapter passes
+        // them through (the persisted schema must declare them).
+        ...fieldValues,
       })),
     });
 
@@ -146,10 +146,10 @@ export const createCore = <TFileUsageContext extends string>(
     };
   };
 
-  const completeUpload: CompleteUploadHandler = async ({ batchId, ctx, endpoint }) => {
-    const files = await databaseAdapter.findFilesByBatchIdAndUploadedBy({
+  const completeUpload: CompleteUploadHandler = async ({ batchId, scope, endpoint }) => {
+    const files = await databaseAdapter.findFilesByBatchIdAndScope({
       batchId,
-      uploadedBy: ctx.userId,
+      scope,
     });
 
     if (files.length === 0) {
@@ -202,7 +202,7 @@ export const createCore = <TFileUsageContext extends string>(
     // was already finalised and `onUploadComplete` must not run again.
     const { updatedCount } = await databaseAdapter.updateFilesToStored({
       batchId,
-      uploadedBy: ctx.userId,
+      scope,
       storedAt: new Date(),
     });
 
@@ -215,7 +215,6 @@ export const createCore = <TFileUsageContext extends string>(
         size: file.size,
         filename: file.filename,
       })),
-      ctx,
       input: uploadSessionData.input,
       middlewareData: uploadSessionData.middlewareData as ValidMiddlewareObject,
       alreadyCompleted: updatedCount === 0,

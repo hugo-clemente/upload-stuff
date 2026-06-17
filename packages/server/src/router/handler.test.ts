@@ -18,14 +18,14 @@ const fakeDatabaseAdapter = (): DatabaseAdapter => {
     createFiles: async ({ files }) => {
       rows.push(...files);
     },
-    findFilesByBatchIdAndUploadedBy: async ({ batchId, uploadedBy }) =>
-      // `undefined` matches only ownerless files — never any owner.
-      rows.filter((r) => r.batchId === batchId && r.uploadedBy === uploadedBy),
+    findFilesByBatchIdAndScope: async ({ batchId, scope }) =>
+      // `undefined` matches only scopeless (anonymous) files — never any scope.
+      rows.filter((r) => r.batchId === batchId && r.scope === scope),
     findFilesToCleanUp: async () => [],
-    updateFilesToStored: async ({ batchId, uploadedBy }) => {
+    updateFilesToStored: async ({ batchId, scope }) => {
       let updatedCount = 0;
       rows = rows.map((r) => {
-        if (r.batchId === batchId && r.uploadedBy === uploadedBy && !r.stored) {
+        if (r.batchId === batchId && r.scope === scope && !r.stored) {
           updatedCount++;
           return { ...r, stored: true };
         }
@@ -61,7 +61,10 @@ const passthroughParser: AnyFileRoute["inputParser"] = {
   },
 };
 
-const makeRoute = (onComplete: () => unknown): AnyFileRoute => ({
+const makeRoute = (
+  onComplete: () => unknown,
+  scope: AnyFileRoute["scope"] = () => undefined,
+): AnyFileRoute => ({
   $types: {} as AnyFileRoute["$types"],
   routeConfig: {
     isPublic: false,
@@ -70,8 +73,9 @@ const makeRoute = (onComplete: () => unknown): AnyFileRoute => ({
     maxFileSize: "5MB",
   },
   inputParser: passthroughParser,
+  scope,
   middleware: () => ({}),
-  metadata: () => ({}),
+  fields: () => ({}),
   onUploadComplete: onComplete,
 });
 
@@ -88,7 +92,7 @@ const setup = () => {
       return { route: "docs" };
     }),
   };
-  const uploadStuff = UploadStuff({
+  const uploadStuff = UploadStuff()({
     storageAdapter: fakeStorageAdapter(),
     databaseAdapter: fakeDatabaseAdapter(),
     filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -98,6 +102,19 @@ const setup = () => {
     handlers,
     getCompletions: () => ({ avatarsCompletions, docsCompletions }),
   };
+};
+
+/** Handlers for a single `avatars` route scoped by the given resolver. */
+const setupScoped = (scope: AnyFileRoute["scope"]) => {
+  const fileRouter = {
+    avatars: makeRoute(() => ({ route: "avatars" }), scope),
+  };
+  const uploadStuff = UploadStuff()({
+    storageAdapter: fakeStorageAdapter(),
+    databaseAdapter: fakeDatabaseAdapter(),
+    filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+  });
+  return fileRouteHandlers({ fileRouter, uploadStuff });
 };
 
 const ctx = { userId: "user-1" };
@@ -146,5 +163,35 @@ describe("fileRouteHandlers", () => {
     await expect(handlers.completeUpload("avatars", { batchId: "missing" }, ctx)).rejects.toThrow(
       UploadStuffError,
     );
+  });
+});
+
+describe("scope ownership guard", () => {
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any
+  const byUser: AnyFileRoute["scope"] = ({ ctx }) => (ctx as any).userId;
+
+  it("completes when the same scope is re-derived (AE1)", async () => {
+    const handlers = setupScoped(byUser);
+    const init = await handlers.initUpload("avatars", initData, { userId: "A" });
+
+    const res = await handlers.completeUpload("avatars", { batchId: init.batchId }, { userId: "A" });
+    expect(res.files).toHaveLength(1);
+  });
+
+  it("rejects completion when a different scope is re-derived (AE2)", async () => {
+    const handlers = setupScoped(byUser);
+    const init = await handlers.initUpload("avatars", initData, { userId: "A" });
+
+    await expect(
+      handlers.completeUpload("avatars", { batchId: init.batchId }, { userId: "B" }),
+    ).rejects.toThrow(UploadStuffError);
+  });
+
+  it("completes an anonymous batch for any caller (AE3)", async () => {
+    const handlers = setupScoped(() => undefined);
+    const init = await handlers.initUpload("avatars", initData, {});
+
+    const res = await handlers.completeUpload("avatars", { batchId: init.batchId }, {});
+    expect(res.files).toHaveLength(1);
   });
 });

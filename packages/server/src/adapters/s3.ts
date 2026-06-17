@@ -1,14 +1,22 @@
 import * as AWS from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-import type { StorageAdapter } from "@upload-stuff/core";
+import type { StorageAdapter, StorageObjectInfo } from "@upload-stuff/core";
 
 export const s3Adapter = (params: {
   config: AWS.S3ClientConfig;
   bucket: string;
+  /**
+   * Maps a stored object to its S3 object metadata (`x-amz-meta-*`). Defaults to
+   * none. Note: object metadata is returned on every GetObject, so do not place
+   * a `scope` that encodes a user/principal id here on public buckets without
+   * intending to expose it.
+   */
+  objectMetadata?: (info: StorageObjectInfo) => Record<string, string>;
 }): StorageAdapter => {
   const s3Client = new AWS.S3Client(params.config);
   const bucket = params.bucket;
+  const objectMetadata = params.objectMetadata ?? (() => ({}));
 
   const fileExists = async (key: string): Promise<boolean> => {
     const command = new AWS.HeadObjectCommand({
@@ -34,25 +42,13 @@ export const s3Adapter = (params: {
     }
   };
 
-  const buildPutObjectInput = (params: {
-    key: string;
-    contentType: string;
-    size: number;
-    usageContext: string;
-    entityId?: string;
-    userId?: string;
-    isPublic: boolean;
-  }): AWS.PutObjectCommandInput => ({
+  const buildPutObjectInput = (info: StorageObjectInfo): AWS.PutObjectCommandInput => ({
     Bucket: bucket,
-    Key: params.key,
-    ContentType: params.contentType,
-    ContentLength: params.size,
-    Metadata: {
-      "uploaded-by": params.userId || "",
-      "usage-context": params.usageContext,
-      "entity-id": params.entityId || "",
-    },
-    ACL: params.isPublic ? "public-read" : "private",
+    Key: info.key,
+    ContentType: info.contentType,
+    ContentLength: info.size,
+    Metadata: objectMetadata(info),
+    ACL: info.isPublic ? "public-read" : "private",
   });
 
   return {

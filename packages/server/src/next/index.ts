@@ -1,4 +1,8 @@
-import type { UploadStuffRouterWithContext, ValidContextObject } from "@upload-stuff/core";
+import type {
+  FieldsDeclaration,
+  UploadStuffRouterWithContext,
+  ValidContextObject,
+} from "@upload-stuff/core";
 import type { UploadStuff } from "../upload-stuff";
 import { type UploadStuffHTTPServerConfig, createHttpServer } from "./http-server";
 
@@ -7,6 +11,7 @@ export type { UploadStuffHTTPServerType } from "./http-server";
 export const toNextJsHandler = <
   TContext extends ValidContextObject,
   TFileUsageContext extends string,
+  TFields extends FieldsDeclaration = Record<string, never>,
 >({
   fileRouter,
   uploadStuff,
@@ -14,7 +19,7 @@ export const toNextJsHandler = <
   createContext,
 }: {
   fileRouter: UploadStuffRouterWithContext<TContext, TFileUsageContext>;
-  uploadStuff: UploadStuff<TFileUsageContext>;
+  uploadStuff: UploadStuff<TFileUsageContext, TFields>;
   config: Partial<UploadStuffHTTPServerConfig>;
   createContext: (opts: { headers: Headers }) => Promise<TContext>;
 }) => {

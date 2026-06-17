@@ -38,14 +38,14 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
       });
     },
 
-    findFilesByBatchIdAndUploadedBy: async (params) => {
+    findFilesByBatchIdAndScope: async (params) => {
       const files = await prisma.file.findMany({
         where: {
           batchId: params.batchId,
           // `?? null` matters: Prisma drops a `field: undefined` clause
           // entirely (matches all rows), whereas `field: null` matches
           // IS NULL. Anonymous uploads must only match anonymous batches.
-          uploadedBy: params.uploadedBy ?? null,
+          scope: params.scope ?? null,
         },
       });
 
@@ -73,9 +73,9 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
       const res = await prisma.file.updateMany({
         where: {
           batchId: params.batchId,
-          // See findFilesByBatchIdAndUploadedBy — `?? null` keeps the owner
-          // filter from silently vanishing for anonymous uploads.
-          uploadedBy: params.uploadedBy ?? null,
+          // See findFilesByBatchIdAndScope — `?? null` keeps the scope filter
+          // from silently vanishing for anonymous uploads.
+          scope: params.scope ?? null,
           stored: false,
         },
         data: {
