@@ -3,6 +3,7 @@ import type * as Standard from "@standard-schema/spec";
 
 import type { AcceptedFileType, FileSize } from "./utils/helpers";
 import type { Json } from "./utils/types";
+import type { FieldsDeclaration, InferFieldValues } from "./types";
 import type { InitUploadFileData, ToUploadFileData, UploadedFileData } from "./schemas";
 
 export type UnsetMarker = "unsetMarker" & { __brand: "unsetMarker" };
@@ -17,9 +18,12 @@ export type RouteConfig<TFileUsageContext extends string> = {
 };
 export type AnyRouteConfig = RouteConfig<string>;
 
-export type ValidContextObject = {
-  userId?: string;
-};
+/**
+ * The request context, fully defined by the consumer. The library no longer
+ * requires any particular field (it used to require `userId`); ownership is now
+ * an opaque `scope` derived from this context.
+ */
+export type ValidContextObject = Record<string, unknown>;
 
 export type ValidMiddlewareObject = {
   [key: string]: unknown;
@@ -35,20 +39,29 @@ type MiddlewareFn<
   ctx: TContext;
 }) => TOutput | Promise<TOutput>;
 
-export type MetadataObject = {
-  entityId?: string;
-};
+/**
+ * Resolves the opaque ownership token for a batch. Runs at init (to persist the
+ * scope) and again at completion (to re-derive and filter by it). Reads `ctx`
+ * only — the live, server-verified context — so the completer's own identity is
+ * what's checked. It must NOT read `input`: at completion `input` is the original
+ * uploader's stored value, so an input-derived scope would let any batchId holder
+ * pass the guard.
+ */
+type ScopeFn<TContext extends ValidContextObject> = (params: {
+  ctx: TContext;
+}) => string | undefined | Promise<string | undefined>;
 
-type MetadataFn<
+type FieldsFn<
   TContext extends ValidContextObject,
   TInput extends Json | UnsetMarker,
   TMiddlewareData extends ValidMiddlewareObject | UnsetMarker,
+  TFields extends FieldsDeclaration,
 > = (params: {
   files: InitUploadFileData[];
   input: TInput;
   middlewareData: TMiddlewareData;
   ctx: TContext;
-}) => MetadataObject | Promise<MetadataObject>;
+}) => InferFieldValues<TFields> | Promise<InferFieldValues<TFields>>;
 
 type UploadCompleteFn<
   TContext extends ValidContextObject,
@@ -66,7 +79,6 @@ export type AnyBuiltUploaderTypes = {
   fileUsageContext: string;
   input: any;
   output: any;
-  metadata: any;
   middlewareData: any;
   context: any;
 };
@@ -75,8 +87,9 @@ export type FileRoute<TTypes extends AnyBuiltUploaderTypes, TFileUsageContext ex
   $types: TTypes;
   routeConfig: RouteConfig<TFileUsageContext>;
   inputParser: Standard.StandardSchemaV1;
+  scope: ScopeFn<any>;
   middleware: MiddlewareFn<any, any, ValidMiddlewareObject>;
-  metadata: MetadataFn<any, any, any>;
+  fields: FieldsFn<any, any, any, any>;
   onUploadComplete: UploadCompleteFn<any, any, any, any>;
 };
 
@@ -88,7 +101,9 @@ type AnyParams = {
     in: any;
     out: any;
   };
-  _metadata: any;
+  _scope: any;
+  _fields: any;
+  _fieldsDeclaration: any;
   _middlewareData: any;
   _ctx: any;
   _completeFnData: any;
@@ -106,7 +121,9 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
         in: TIn;
         out: TOut;
       };
-      _metadata: TParams["_metadata"];
+      _scope: TParams["_scope"];
+      _fields: TParams["_fields"];
+      _fieldsDeclaration: TParams["_fieldsDeclaration"];
       _middlewareData: TParams["_middlewareData"];
       _ctx: TParams["_ctx"];
       _completeFnData: TParams["_completeFnData"];
@@ -114,15 +131,17 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
     TFileUsageContext
   >;
 
-  metadata: (
-    fn: TParams["_metadata"] extends UnsetMarker
-      ? MetadataFn<TParams["_ctx"], TParams["_input"]["out"], TParams["_middlewareData"]>
-      : ErrorMessage<"metadata has already been set">,
+  scope: (
+    fn: TParams["_scope"] extends UnsetMarker
+      ? ScopeFn<TParams["_ctx"]>
+      : ErrorMessage<"scope has already been set">,
   ) => UploadBuilder<
     {
       _routeConfig: TParams["_routeConfig"];
       _input: TParams["_input"];
-      _metadata: MetadataObject;
+      _scope: ScopeFn<TParams["_ctx"]>;
+      _fields: TParams["_fields"];
+      _fieldsDeclaration: TParams["_fieldsDeclaration"];
       _middlewareData: TParams["_middlewareData"];
       _ctx: TParams["_ctx"];
       _completeFnData: TParams["_completeFnData"];
@@ -138,8 +157,33 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
     {
       _routeConfig: TParams["_routeConfig"];
       _input: TParams["_input"];
-      _metadata: TParams["_metadata"];
+      _scope: TParams["_scope"];
+      _fields: TParams["_fields"];
+      _fieldsDeclaration: TParams["_fieldsDeclaration"];
       _middlewareData: TOut;
+      _ctx: TParams["_ctx"];
+      _completeFnData: TParams["_completeFnData"];
+    },
+    TFileUsageContext
+  >;
+
+  fields: (
+    fn: TParams["_fields"] extends UnsetMarker
+      ? FieldsFn<
+          TParams["_ctx"],
+          TParams["_input"]["out"],
+          TParams["_middlewareData"],
+          TParams["_fieldsDeclaration"]
+        >
+      : ErrorMessage<"fields has already been set">,
+  ) => UploadBuilder<
+    {
+      _routeConfig: TParams["_routeConfig"];
+      _input: TParams["_input"];
+      _scope: TParams["_scope"];
+      _fields: InferFieldValues<TParams["_fieldsDeclaration"]>;
+      _fieldsDeclaration: TParams["_fieldsDeclaration"];
+      _middlewareData: TParams["_middlewareData"];
       _ctx: TParams["_ctx"];
       _completeFnData: TParams["_completeFnData"];
     },
@@ -154,7 +198,9 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
     {
       _routeConfig: TParams["_routeConfig"];
       _input: TParams["_input"];
-      _metadata: TParams["_metadata"];
+      _scope: TParams["_scope"];
+      _fields: TParams["_fields"];
+      _fieldsDeclaration: TParams["_fieldsDeclaration"];
       _ctx: TParams["_ctx"];
       _middlewareData: TParams["_middlewareData"];
       _completeFnData: TOut;
@@ -167,7 +213,6 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
       fileUsageContext: TFileUsageContext;
       input: TParams["_input"]["in"];
       output: TParams["_completeFnData"];
-      metadata: TParams["_metadata"];
       middlewareData: TParams["_middlewareData"];
       context: TParams["_ctx"];
     },
@@ -187,7 +232,6 @@ export type UploadStuffRouterWithContext<
       fileUsageContext: TFileUsageContext;
       input: any;
       output: any;
-      metadata: any;
       middlewareData: any;
       context: TContext;
     },

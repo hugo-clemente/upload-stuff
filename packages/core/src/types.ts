@@ -2,6 +2,43 @@ import type { SetOptional } from "type-fest";
 
 import type { Json } from "./utils/types";
 
+/** Declared custom-field value types. */
+export type FieldType = "string" | "number" | "boolean";
+
+export type FieldAttributes = {
+  type: FieldType;
+  required?: boolean;
+};
+
+/**
+ * A consumer's central declaration of the custom columns persisted alongside
+ * the library's own state-machine columns. Declared once on the `UploadStuff`
+ * config; values are provided per route by `.fields()`.
+ */
+export type FieldsDeclaration = Record<string, FieldAttributes>;
+
+type FieldTsType<T extends FieldType> = T extends "string"
+  ? string
+  : T extends "number"
+    ? number
+    : T extends "boolean"
+      ? boolean
+      : never;
+
+/**
+ * The resolved value shape for a fields declaration: a `required: true` field
+ * becomes a required key, every other field becomes optional.
+ */
+export type InferFieldValues<TFields extends FieldsDeclaration> = {
+  [K in keyof TFields as TFields[K]["required"] extends true ? K : never]: FieldTsType<
+    TFields[K]["type"]
+  >;
+} & {
+  [K in keyof TFields as TFields[K]["required"] extends true ? never : K]?: FieldTsType<
+    TFields[K]["type"]
+  >;
+};
+
 export type DatabaseFile<TFileUsageContext extends string> = {
   id: string;
   key: string;
@@ -15,21 +52,26 @@ export type DatabaseFile<TFileUsageContext extends string> = {
   stored: boolean;
   storedAt?: Date;
   batchId?: string;
-  uploadedBy?: string;
-  entityId?: string;
+  /**
+   * Opaque ownership token, owned by the library but never interpreted by it.
+   * Scopes batch completion: only a request that re-derives the same value can
+   * finalize a batch. `undefined` denotes an anonymous batch. Derive it from the
+   * live `ctx` only — see `.scope()`.
+   */
+  scope?: string;
 };
 
 export type DatabaseAdapter<TFileUsageContext extends string = string> = {
   createFiles: (params: { files: DatabaseFile<TFileUsageContext>[] }) => Promise<void>;
 
-  findFilesByBatchIdAndUploadedBy: (params: {
+  findFilesByBatchIdAndScope: (params: {
     batchId: string;
     /**
-     * Owner filter. A defined value matches only that owner's files; an
-     * `undefined` value matches only files with no owner (anonymous uploads).
-     * Adapters MUST NOT treat `undefined` as "match any owner".
+     * Scope filter. A defined value matches only that scope's files; an
+     * `undefined` value matches only files with no scope (anonymous uploads).
+     * Adapters MUST NOT treat `undefined` as "match any scope".
      */
-    uploadedBy?: string;
+    scope?: string;
   }) => Promise<DatabaseFile<TFileUsageContext>[]>;
 
   findFilesToCleanUp: (params: {
@@ -39,10 +81,10 @@ export type DatabaseAdapter<TFileUsageContext extends string = string> = {
   updateFilesToStored: (params: {
     batchId: string;
     /**
-     * Owner filter — same semantics as findFilesByBatchIdAndUploadedBy:
-     * `undefined` matches only anonymous (ownerless) files, never any owner.
+     * Scope filter — same semantics as findFilesByBatchIdAndScope:
+     * `undefined` matches only anonymous (scopeless) files, never any scope.
      */
-    uploadedBy?: string;
+    scope?: string;
     storedAt: Date;
   }) => Promise<{ updatedCount: number }>;
 
@@ -58,28 +100,28 @@ export type DatabaseAdapter<TFileUsageContext extends string = string> = {
 
 export type FileUploadContent = string | Uint8Array;
 
+/**
+ * The persisted row data a storage adapter may surface as object metadata. Carries
+ * the opaque `scope` and any declared custom `fields`, but not storage internals.
+ */
+export type StorageObjectInfo = {
+  key: string;
+  contentType: string;
+  size: number;
+  usageContext: string;
+  isPublic: boolean;
+  scope?: string;
+  fields?: Record<string, unknown>;
+};
+
 export type StorageAdapter = {
-  generatePresignedUpload: (params: {
-    key: string;
-    contentType: string;
-    size: number;
-    usageContext: string;
-    entityId?: string;
-    userId?: string;
-    isPublic: boolean;
-  }) => Promise<{ uploadUrl: string }>;
+  generatePresignedUpload: (params: StorageObjectInfo) => Promise<{ uploadUrl: string }>;
 
-  uploadFile: (params: {
-    key: string;
-    contentType: string;
-    size: number;
-    usageContext: string;
-    entityId?: string;
-    userId?: string;
-    isPublic: boolean;
-
-    content: FileUploadContent;
-  }) => Promise<{ key: string }>;
+  uploadFile: (
+    params: StorageObjectInfo & {
+      content: FileUploadContent;
+    },
+  ) => Promise<{ key: string }>;
 
   verifyUpload: (params: {
     key: string;
@@ -113,15 +155,23 @@ export type FileIdGenerator = (params: {
 
 export type FilePublicUrlGenerator = (params: { key: string }) => string | Promise<string>;
 
-export type UploadStuffConfig<TFileUsageContext extends string> = {
+export type UploadStuffConfig<
+  TFileUsageContext extends string,
+  TFields extends FieldsDeclaration = Record<string, never>,
+> = {
   storageAdapter: StorageAdapter;
   databaseAdapter: DatabaseAdapter<TFileUsageContext>;
   fileIdGenerator: FileIdGenerator;
   fileKeyGenerator: FileKeyGenerator;
   filePublicUrlGenerator: FilePublicUrlGenerator;
+  /** Central declaration of the custom columns this instance persists. */
+  fields?: TFields;
 };
 
-export type CreateUploadStuffConfig<TFileUsageContext extends string> = SetOptional<
-  UploadStuffConfig<TFileUsageContext>,
+export type CreateUploadStuffConfig<
+  TFileUsageContext extends string,
+  TFields extends FieldsDeclaration = Record<string, never>,
+> = SetOptional<
+  UploadStuffConfig<TFileUsageContext, TFields>,
   "fileIdGenerator" | "fileKeyGenerator"
 >;

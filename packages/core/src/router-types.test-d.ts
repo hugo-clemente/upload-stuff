@@ -19,7 +19,6 @@ describe("inferRouteInput", () => {
         fileUsageContext: "avatar";
         input: { albumId: string };
         output: unknown;
-        metadata: unknown;
         middlewareData: unknown;
         context: { userId?: string };
       },
@@ -29,21 +28,37 @@ describe("inferRouteInput", () => {
   });
 });
 
-describe("UploadBuilder.onUploadComplete", () => {
-  it("types middlewareData from the middleware output, not the metadata", () => {
-    type Builder = UploadBuilder<
-      {
-        _routeConfig: unknown;
-        _input: { in: UnsetMarker; out: UnsetMarker };
-        _metadata: { entityId?: string };
-        _middlewareData: { role: string };
-        _ctx: { userId?: string };
-        _completeFnData: UnsetMarker;
-      },
-      "avatar"
-    >;
+describe("UploadBuilder", () => {
+  type Builder = UploadBuilder<
+    {
+      _routeConfig: unknown;
+      _input: { in: UnsetMarker; out: UnsetMarker };
+      _scope: UnsetMarker;
+      _fields: UnsetMarker;
+      _fieldsDeclaration: Record<string, never>;
+      _middlewareData: { role: string };
+      _ctx: { userId?: string };
+      _completeFnData: UnsetMarker;
+    },
+    "avatar"
+  >;
+
+  it("types middlewareData from the middleware output", () => {
     type CompleteFn = Parameters<Builder["onUploadComplete"]>[0];
     type CompleteFnParams = Parameters<CompleteFn>[0];
     expectTypeOf<CompleteFnParams["middlewareData"]>().toEqualTypeOf<{ role: string }>();
+  });
+
+  it("exposes scope and fields, not the removed metadata", () => {
+    expectTypeOf<Builder>().toHaveProperty("scope");
+    expectTypeOf<Builder>().toHaveProperty("fields");
+    expectTypeOf<Builder>().not.toHaveProperty("metadata");
+  });
+
+  it("scope resolver reads ctx only and returns a string or undefined", () => {
+    type ScopeFn = Parameters<Builder["scope"]>[0];
+    type ScopeParams = Parameters<ScopeFn>[0];
+    expectTypeOf<ScopeParams>().toEqualTypeOf<{ ctx: { userId?: string } }>();
+    expectTypeOf<ReturnType<ScopeFn>>().toEqualTypeOf<string | undefined | Promise<string | undefined>>();
   });
 });
