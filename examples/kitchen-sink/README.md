@@ -15,8 +15,8 @@ its persisted DB row — plus a per-user gallery and a `.scope()` ownership-guar
   header.
 - The typed `useUploadStuff` hook: upload progress, the server `onUploadComplete`
   result, and the stored image.
-- Ownership: a per-user scoped gallery, and a hijack panel proving a second user
-  cannot finalize another user's in-flight batch.
+- Ownership via `.scope()`: a per-user scoped gallery, so each user only sees the
+  files they uploaded.
 
 ## Prerequisites
 
@@ -50,9 +50,7 @@ the data volumes).
 - The `File` schema is created with `prisma db push` (no migrations folder).
 - **`.scope()` is not authentication.** It enforces ownership *given a trustworthy
   identity*. Here the identity is an unauthenticated `x-user-id` header chosen in the
-  UI — fine for a demo, but in a real app derive `ctx` from a verified session. The
-  hijack panel shows the scope *mechanism* (a different id can't finalize the batch),
-  not a security boundary against a forged header.
+  UI — fine for a demo, but in a real app derive `ctx` from a verified session.
 - **Public objects are world-readable.** The route is `isPublic: true` and the bucket
   has anonymous-download, so anyone with an object's `http://localhost:9000/uploads/<key>`
   URL can read it. `.scope()` guards listing/finalization, not raw object reads. Use

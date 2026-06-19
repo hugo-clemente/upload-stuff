@@ -5,7 +5,6 @@ import { useState } from "react";
 import { USERS, type UserId } from "@/lib/users";
 import { UploadPanel } from "./upload-panel";
 import { Gallery } from "./gallery";
-import { HijackPanel } from "./hijack-panel";
 
 export default function Page() {
   const [user, setUser] = useState<UserId>("user-a");
@@ -29,7 +28,6 @@ export default function Page() {
 
       <UploadPanel user={user} onUploaded={() => setRefreshKey((k) => k + 1)} />
       <Gallery user={user} refreshKey={refreshKey} />
-      <HijackPanel />
     </main>
   );
 }
