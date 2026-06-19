@@ -71,6 +71,7 @@ export const RESERVED_FIELD_NAMES = [
   "isPublic",
   "stored",
   "storedAt",
+  "createdAt",
   "batchId",
   "scope",
 ] as const;
