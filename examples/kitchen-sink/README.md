@@ -48,3 +48,15 @@ the data volumes).
 
 - Credentials here are throwaway local defaults — no real auth, no secrets.
 - The `File` schema is created with `prisma db push` (no migrations folder).
+- **`.scope()` is not authentication.** It enforces ownership *given a trustworthy
+  identity*. Here the identity is an unauthenticated `x-user-id` header chosen in the
+  UI — fine for a demo, but in a real app derive `ctx` from a verified session. The
+  hijack panel shows the scope *mechanism* (a different id can't finalize the batch),
+  not a security boundary against a forged header.
+- **Public objects are world-readable.** The route is `isPublic: true` and the bucket
+  has anonymous-download, so anyone with an object's `http://localhost:9000/uploads/<key>`
+  URL can read it. `.scope()` guards listing/finalization, not raw object reads. Use
+  `isPublic: false` (and a signed-read flow) for private files.
+- On a first cold boot, the `uploads` bucket is created by a one-shot `mc` container in
+  the background; if your very first upload races it, wait for `minio ready` in the
+  compose logs and retry.

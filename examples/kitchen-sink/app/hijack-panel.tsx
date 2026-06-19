@@ -38,7 +38,7 @@ export function HijackPanel() {
       // 2. upload the bytes to MinIO (replaying the signed metadata headers)
       await fetch(plan.uploadUrl, {
         method: "PUT",
-        headers: { "content-type": file.type, ...(plan.uploadHeaders ?? {}) },
+        headers: { "content-type": file.type, ...plan.uploadHeaders },
         body: file,
       });
       append("2. uploaded bytes to storage");
