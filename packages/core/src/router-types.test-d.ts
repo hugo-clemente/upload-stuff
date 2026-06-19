@@ -5,8 +5,22 @@ import type {
   FileRoute,
   UnsetMarker,
   UploadBuilder,
+  ValidContextObject,
   inferRouteInput,
 } from "./router-types";
+
+describe("ValidContextObject", () => {
+  it("accepts interface-shaped contexts (no implicit index signature)", () => {
+    interface AppContext {
+      userId: string;
+    }
+    // Interfaces lack an implicit index signature, so they would fail a
+    // `Record<string, unknown>` constraint. The "fully user-defined context"
+    // API must still accept them.
+    expectTypeOf<AppContext>().toMatchTypeOf<ValidContextObject>();
+    expectTypeOf<{ userId: string }>().toMatchTypeOf<ValidContextObject>();
+  });
+});
 
 describe("inferRouteInput", () => {
   it("resolves to any for AnyFileRoute (input is any)", () => {

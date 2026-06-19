@@ -22,8 +22,14 @@ export type AnyRouteConfig = RouteConfig<string>;
  * The request context, fully defined by the consumer. The library no longer
  * requires any particular field (it used to require `userId`); ownership is now
  * an opaque `scope` derived from this context.
+ *
+ * Constrained to `object` rather than `Record<string, unknown>` on purpose:
+ * interfaces (e.g. `interface AppContext { userId: string }`) lack an implicit
+ * index signature and so do NOT satisfy `Record<string, unknown>`, which would
+ * make the "fully user-defined context" API reject the most common context
+ * shape consumers pass to `createUploadStuffRouter` / `toNextJsHandler`.
  */
-export type ValidContextObject = Record<string, unknown>;
+export type ValidContextObject = object;
 
 export type ValidMiddlewareObject = {
   [key: string]: unknown;
