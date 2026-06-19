@@ -166,6 +166,86 @@ describe("fileRouteHandlers", () => {
   });
 });
 
+describe("presigned upload headers (#5)", () => {
+  it("surfaces the storage adapter's requiredHeaders on each plan file", async () => {
+    const storageAdapter: StorageAdapter = {
+      ...fakeStorageAdapter(),
+      generatePresignedUpload: async ({ key }) => ({
+        uploadUrl: `https://upload.test/${key}`,
+        requiredHeaders: { "x-amz-meta-owner": "alice" },
+      }),
+    };
+    const uploadStuff = UploadStuff()({
+      storageAdapter,
+      databaseAdapter: fakeDatabaseAdapter(),
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+    });
+    const handlers = fileRouteHandlers({
+      fileRouter: { avatars: makeRoute(() => ({})) },
+      uploadStuff,
+    });
+
+    const init = await handlers.initUpload("avatars", initData, ctx);
+    expect(init.files[0]!.uploadHeaders).toEqual({ "x-amz-meta-owner": "alice" });
+  });
+});
+
+describe("custom field persistence (#8 / #1)", () => {
+  /** Captures the rows handed to `createFiles`. */
+  const capturingSetup = (fields: () => Record<string, unknown>) => {
+    // oxlint-disable-next-line @typescript-eslint/no-explicit-any
+    const created: DatabaseFile<string, any>[] = [];
+    // oxlint-disable-next-line @typescript-eslint/no-explicit-any
+    const databaseAdapter: DatabaseAdapter<string, any> = {
+      ...fakeDatabaseAdapter(),
+      createFiles: async ({ files }) => {
+        created.push(...files);
+      },
+    };
+    const uploadStuff = UploadStuff()({
+      storageAdapter: fakeStorageAdapter(),
+      databaseAdapter,
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+      fields: {
+        entityId: { type: "string", required: false },
+        count: { type: "number", required: true },
+      },
+    });
+    const route: AnyFileRoute = { ...makeRoute(() => ({})), fields };
+    const handlers = fileRouteHandlers({ fileRouter: { avatars: route }, uploadStuff });
+    return { handlers, created };
+  };
+
+  it("persists only declared field keys, dropping stray keys", async () => {
+    const { handlers, created } = capturingSetup(() => ({
+      entityId: "e1",
+      count: 3,
+      // a typo / undeclared key must never reach the row
+      typo: "nope",
+    }));
+
+    await handlers.initUpload("avatars", initData, ctx);
+
+    expect(created[0]).toMatchObject({ entityId: "e1", count: 3 });
+    expect(created[0]).not.toHaveProperty("typo");
+  });
+
+  it("cannot overwrite a library-owned column via a field value", async () => {
+    const { handlers, created } = capturingSetup(() => ({
+      entityId: "e1",
+      count: 3,
+      // even if a resolver returns a reserved key, it must not clobber state
+      scope: "attacker",
+      stored: true,
+    }));
+
+    await handlers.initUpload("avatars", initData, ctx);
+
+    expect(created[0]!.scope).toBeUndefined();
+    expect(created[0]!.stored).toBe(false);
+  });
+});
+
 describe("scope ownership guard", () => {
   // oxlint-disable-next-line @typescript-eslint/no-explicit-any
   const byUser: AnyFileRoute["scope"] = ({ ctx }) => (ctx as any).userId;

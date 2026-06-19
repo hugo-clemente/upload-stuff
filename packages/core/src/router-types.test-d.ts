@@ -76,3 +76,39 @@ describe("UploadBuilder", () => {
     expectTypeOf<ReturnType<ScopeFn>>().toEqualTypeOf<string | undefined | Promise<string | undefined>>();
   });
 });
+
+describe("build requires .fields() when a required field is declared (#3)", () => {
+  type RequiredFieldsDeclaration = { count: { type: "number"; required: true } };
+
+  type ParamsWith<TFields, TFieldsDeclaration> = {
+    _routeConfig: unknown;
+    _input: { in: UnsetMarker; out: UnsetMarker };
+    _scope: UnsetMarker;
+    _fields: TFields;
+    _fieldsDeclaration: TFieldsDeclaration;
+    _middlewareData: UnsetMarker;
+    _ctx: { userId?: string };
+    _completeFnData: UnsetMarker;
+  };
+
+  it("build() resolves to an error string when a required field is declared but .fields() is unset", () => {
+    type Built = ReturnType<
+      UploadBuilder<ParamsWith<UnsetMarker, RequiredFieldsDeclaration>, "avatar">["build"]
+    >;
+    expectTypeOf<Built>().toEqualTypeOf<"`.fields()` is required: this instance declares a required custom field">();
+  });
+
+  it("build() resolves to a FileRoute once .fields() has been set", () => {
+    type Built = ReturnType<
+      UploadBuilder<ParamsWith<{ count: number }, RequiredFieldsDeclaration>, "avatar">["build"]
+    >;
+    expectTypeOf<Built>().toMatchTypeOf<AnyFileRoute>();
+  });
+
+  it("build() resolves to a FileRoute when no required field is declared, even without .fields()", () => {
+    type Built = ReturnType<
+      UploadBuilder<ParamsWith<UnsetMarker, Record<never, never>>, "avatar">["build"]
+    >;
+    expectTypeOf<Built>().toMatchTypeOf<AnyFileRoute>();
+  });
+});

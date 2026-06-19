@@ -101,6 +101,29 @@ export type FileRoute<TTypes extends AnyBuiltUploaderTypes, TFileUsageContext ex
 
 export type AnyFileRoute = FileRoute<AnyBuiltUploaderTypes, any>;
 
+/** Keys of a fields declaration whose attributes mark them `required: true`. */
+type RequiredFieldKeys<TFieldsDeclaration> = keyof {
+  [K in keyof TFieldsDeclaration as TFieldsDeclaration[K] extends { required: true }
+    ? K
+    : never]: true;
+};
+
+/** Whether a fields declaration has at least one `required: true` field. */
+type HasRequiredField<TFieldsDeclaration> = [RequiredFieldKeys<TFieldsDeclaration>] extends [never]
+  ? false
+  : true;
+
+type BuiltFileRoute<TParams extends AnyParams, TFileUsageContext extends string> = FileRoute<
+  {
+    fileUsageContext: TFileUsageContext;
+    input: TParams["_input"]["in"];
+    output: TParams["_completeFnData"];
+    middlewareData: TParams["_middlewareData"];
+    context: TParams["_ctx"];
+  },
+  TFileUsageContext
+>;
+
 type AnyParams = {
   _routeConfig: any;
   _input: {
@@ -214,16 +237,17 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
     TFileUsageContext
   >;
 
-  build: () => FileRoute<
-    {
-      fileUsageContext: TFileUsageContext;
-      input: TParams["_input"]["in"];
-      output: TParams["_completeFnData"];
-      middlewareData: TParams["_middlewareData"];
-      context: TParams["_ctx"];
-    },
-    TFileUsageContext
-  >;
+  /**
+   * Finalise the route. When the instance's fields declaration contains a
+   * `required: true` field but `.fields()` was never called, this resolves to an
+   * error message instead of a `FileRoute` — persisting `{}` for a required
+   * column would otherwise only fail later at insert time (NOT NULL violation).
+   */
+  build: () => HasRequiredField<TParams["_fieldsDeclaration"]> extends true
+    ? TParams["_fields"] extends UnsetMarker
+      ? ErrorMessage<"`.fields()` is required: this instance declares a required custom field">
+      : BuiltFileRoute<TParams, TFileUsageContext>
+    : BuiltFileRoute<TParams, TFileUsageContext>;
 }
 
 export type UploadStuffRouter = Record<string, AnyFileRoute>;

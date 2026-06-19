@@ -43,6 +43,15 @@ export const s3Adapter = (params: {
     ACL: info.isPublic ? "public-read" : "private",
   });
 
+  // S3 signs `x-amz-meta-*` into the presigned PUT, so the client must replay
+  // those exact headers or the signature check fails. Surface them as
+  // `requiredHeaders` for the upload plan. `Content-Type` is signed too but the
+  // client always sends it, so it's intentionally left out here.
+  const metadataHeaders = (objectMetadata: Record<string, string> | undefined) =>
+    Object.fromEntries(
+      Object.entries(objectMetadata ?? {}).map(([key, value]) => [`x-amz-meta-${key}`, value]),
+    );
+
   return {
     generatePresignedUpload: async (params) => {
       const command = new AWS.PutObjectCommand(buildPutObjectInput(params));
@@ -51,8 +60,11 @@ export const s3Adapter = (params: {
         expiresIn: 3600, // 1 hour
       });
 
+      const requiredHeaders = metadataHeaders(params.objectMetadata);
+
       return {
         uploadUrl,
+        requiredHeaders: Object.keys(requiredHeaders).length > 0 ? requiredHeaders : undefined,
       };
     },
 

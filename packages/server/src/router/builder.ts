@@ -4,7 +4,6 @@ import type {
   AnyBuiltUploaderTypes,
   AnyFileRoute,
   FieldsDeclaration,
-  FileRoute,
   RouteConfig,
   UnsetMarker,
   UploadBuilder,
@@ -91,7 +90,12 @@ const internalCreateBuilder = <
       }) as UploadBuilder<any, TFileUsageContext>;
     },
 
-    build: () => _def as FileRoute<any, TFileUsageContext>,
+    // `build`'s public return type is conditional on the fields declaration (see
+    // UploadBuilder) and is generic here, so it can't be reconstructed inline.
+    // Return `any` from the impl — assignable to whichever branch the conditional
+    // resolves to — without an outer cast that would strip contextual typing from
+    // the chain-method parameters above.
+    build: (): any => _def,
   };
 };
 

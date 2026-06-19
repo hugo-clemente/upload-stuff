@@ -55,7 +55,16 @@ export const createCore = <TFileUsageContext extends string>(
     fileIdGenerator,
     filePublicUrlGenerator,
     objectMetadata,
+    fields,
   } = config;
+
+  // The fields declaration is the authoritative persisted shape. Filter every
+  // `.fields()` result down to declared keys before it reaches the row, so a
+  // stray/typo key from the resolver can't be forwarded as an unknown column,
+  // and a value can never collide with a library-owned column.
+  const declaredFieldNames = Object.keys(fields ?? {});
+  const pickDeclaredFields = (values: Record<string, unknown>): Record<string, unknown> =>
+    Object.fromEntries(Object.entries(values).filter(([key]) => declaredFieldNames.includes(key)));
 
   const initUpload: InitUploadHandler<TFileUsageContext> = async ({
     files,
@@ -81,6 +90,8 @@ export const createCore = <TFileUsageContext extends string>(
     validateFiles(files, config);
 
     const batchId = createId();
+
+    const safeFieldValues = pickDeclaredFields(fieldValues);
 
     const preparedFiles = await Promise.all(
       files.map(async (file) => {
@@ -111,12 +122,19 @@ export const createCore = <TFileUsageContext extends string>(
               usageContext: config.usageContext,
               isPublic: config.isPublic,
               scope,
-              ...fieldValues,
+              ...safeFieldValues,
             }),
           }),
         ]);
 
-        return { file, id, key, publicUrl, uploadUrl: uploadData.uploadUrl };
+        return {
+          file,
+          id,
+          key,
+          publicUrl,
+          uploadUrl: uploadData.uploadUrl,
+          uploadHeaders: uploadData.requiredHeaders,
+        };
       }),
     );
 
@@ -136,13 +154,14 @@ export const createCore = <TFileUsageContext extends string>(
         stored: false,
         scope,
         // Declared custom columns ride along structurally; the adapter passes
-        // them through (the persisted schema must declare them).
-        ...fieldValues,
+        // them through (the persisted schema must declare them). Already filtered
+        // to declared keys, so this can't overwrite a library-owned column above.
+        ...safeFieldValues,
       })),
     });
 
     return {
-      files: preparedFiles.map(({ file, id, key, publicUrl, uploadUrl }) => ({
+      files: preparedFiles.map(({ file, id, key, publicUrl, uploadUrl, uploadHeaders }) => ({
         id,
         key,
         publicUrl,
@@ -150,6 +169,7 @@ export const createCore = <TFileUsageContext extends string>(
         filename: file.filename,
         size: file.size,
         uploadUrl,
+        uploadHeaders,
       })),
       batchId,
     };

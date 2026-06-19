@@ -1,3 +1,4 @@
+/* oxlint-disable @typescript-eslint/no-explicit-any */
 import type { SetOptional } from "type-fest";
 
 import type { Json } from "./utils/types";
@@ -25,21 +26,73 @@ type FieldTsType<T extends FieldType> = T extends "string"
       ? boolean
       : never;
 
+/** True only for the `any` type. */
+type IsAny<T> = 0 extends 1 & T ? true : false;
+
 /**
  * The resolved value shape for a fields declaration: a `required: true` field
  * becomes a required key, every other field becomes optional.
+ *
+ * `any` is mapped to `Record<string, any>` rather than the literal mapped types:
+ * the erased `UploadStuff<any, any>` (`AnyUploadStuff`) flows `any` in here, and
+ * the naive mapping would otherwise collapse to a `string | number | boolean`
+ * index signature that conflicts with the base row's `uploadSessionData: Json`
+ * and breaks assignability of every concrete instance to `AnyUploadStuff`.
  */
-export type InferFieldValues<TFields extends FieldsDeclaration> = {
-  [K in keyof TFields as TFields[K]["required"] extends true ? K : never]: FieldTsType<
-    TFields[K]["type"]
-  >;
-} & {
-  [K in keyof TFields as TFields[K]["required"] extends true ? never : K]?: FieldTsType<
-    TFields[K]["type"]
-  >;
+export type InferFieldValues<TFields extends FieldsDeclaration> =
+  IsAny<TFields> extends true
+    ? Record<string, any>
+    : {
+        [K in keyof TFields as TFields[K]["required"] extends true ? K : never]: FieldTsType<
+          TFields[K]["type"]
+        >;
+      } & {
+        [K in keyof TFields as TFields[K]["required"] extends true ? never : K]?: FieldTsType<
+          TFields[K]["type"]
+        >;
+      };
+
+/**
+ * Library-owned columns present on every persisted file row. A custom field may
+ * not reuse one of these names: at insert time the resolved field values are
+ * spread alongside these columns, so a collision would let a `.fields()` value
+ * overwrite the library's own state (the `scope` ownership token, the `stored`
+ * completion flag, the `batchId` grouping, …) and corrupt the upload lifecycle.
+ */
+export const RESERVED_FIELD_NAMES = [
+  "id",
+  "key",
+  "filename",
+  "size",
+  "publicUrl",
+  "contentType",
+  "uploadSessionData",
+  "usageContext",
+  "isPublic",
+  "stored",
+  "storedAt",
+  "batchId",
+  "scope",
+] as const;
+
+export type ReservedFieldName = (typeof RESERVED_FIELD_NAMES)[number];
+
+/**
+ * Type-level guard for a fields declaration: if a declared key collides with a
+ * reserved column name, that key's value type becomes an error-message string
+ * (not a `FieldAttributes`), so the declaration fails to type-check at the
+ * `UploadStuff({ fields })` call site. Valid declarations pass through unchanged.
+ */
+export type ValidateFieldsDeclaration<TFields extends FieldsDeclaration> = {
+  [K in keyof TFields]: K extends ReservedFieldName
+    ? `Error: "${K & string}" is a reserved column name and cannot be used as a custom field`
+    : TFields[K];
 };
 
-export type DatabaseFile<TFileUsageContext extends string> = {
+export type DatabaseFile<
+  TFileUsageContext extends string,
+  TFields extends FieldsDeclaration = Record<never, never>,
+> = {
   id: string;
   key: string;
   filename: string;
@@ -59,10 +112,13 @@ export type DatabaseFile<TFileUsageContext extends string> = {
    * live `ctx` only — see `.scope()`.
    */
   scope?: string;
-};
+} & InferFieldValues<TFields>;
 
-export type DatabaseAdapter<TFileUsageContext extends string = string> = {
-  createFiles: (params: { files: DatabaseFile<TFileUsageContext>[] }) => Promise<void>;
+export type DatabaseAdapter<
+  TFileUsageContext extends string = string,
+  TFields extends FieldsDeclaration = Record<never, never>,
+> = {
+  createFiles: (params: { files: DatabaseFile<TFileUsageContext, TFields>[] }) => Promise<void>;
 
   findFilesByBatchIdAndScope: (params: {
     batchId: string;
@@ -72,7 +128,7 @@ export type DatabaseAdapter<TFileUsageContext extends string = string> = {
      * Adapters MUST NOT treat `undefined` as "match any scope".
      */
     scope?: string;
-  }) => Promise<DatabaseFile<TFileUsageContext>[]>;
+  }) => Promise<DatabaseFile<TFileUsageContext, TFields>[]>;
 
   findFilesToCleanUp: (params: {
     createdAtThreshold: Date;
@@ -89,8 +145,8 @@ export type DatabaseAdapter<TFileUsageContext extends string = string> = {
   }) => Promise<{ updatedCount: number }>;
 
   updateFile: (params: {
-    file: Partial<DatabaseFile<TFileUsageContext>> & { id: string };
-  }) => Promise<DatabaseFile<TFileUsageContext>>;
+    file: Partial<DatabaseFile<TFileUsageContext, TFields>> & { id: string };
+  }) => Promise<DatabaseFile<TFileUsageContext, TFields>>;
 
   deleteFiles: (params: {
     fileIds: string[];
@@ -137,7 +193,17 @@ export type StorageObjectInfo = {
 };
 
 export type StorageAdapter = {
-  generatePresignedUpload: (params: StorageObjectInfo) => Promise<{ uploadUrl: string }>;
+  generatePresignedUpload: (params: StorageObjectInfo) => Promise<{
+    uploadUrl: string;
+    /**
+     * Headers the client MUST send on the PUT for the request to match the
+     * signature. When `objectMetadata` is non-empty the presigned URL signs the
+     * corresponding metadata headers (e.g. S3 `x-amz-meta-*`); the client has to
+     * replay them verbatim or storage rejects the upload. `Content-Type` is
+     * handled separately by the client and is not included here.
+     */
+    requiredHeaders?: Record<string, string>;
+  }>;
 
   uploadFile: (
     params: StorageObjectInfo & {
@@ -182,7 +248,11 @@ export type UploadStuffConfig<
   TFields extends FieldsDeclaration = Record<never, never>,
 > = {
   storageAdapter: StorageAdapter;
-  databaseAdapter: DatabaseAdapter<TFileUsageContext>;
+  // `NoInfer` so `TFields` is fixed by the central `fields` declaration below and
+  // merely *checked* here — otherwise the adapter (e.g. a defaulted
+  // `prismaAdapter()`) would also be an inference site and could pin `TFields` to
+  // `{}`, silently dropping the declared columns from the typed contract.
+  databaseAdapter: DatabaseAdapter<TFileUsageContext, NoInfer<TFields>>;
   fileIdGenerator: FileIdGenerator;
   fileKeyGenerator: FileKeyGenerator;
   filePublicUrlGenerator: FilePublicUrlGenerator;
@@ -192,7 +262,7 @@ export type UploadStuffConfig<
    * Resolve object-storage metadata (e.g. S3 `x-amz-meta-*`) from each row,
    * typed against the declared `fields`. The storage adapter writes the result.
    */
-  objectMetadata?: ObjectMetadataResolver<TFileUsageContext, TFields>;
+  objectMetadata?: ObjectMetadataResolver<TFileUsageContext, NoInfer<TFields>>;
 };
 
 export type CreateUploadStuffConfig<

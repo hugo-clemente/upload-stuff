@@ -3,7 +3,7 @@ import type {
   UploadStuffRouterWithContext,
   ValidContextObject,
 } from "@upload-stuff/core";
-import type { UploadStuff } from "../upload-stuff";
+import type { AnyUploadStuff, UploadStuff } from "../upload-stuff";
 import { type UploadStuffHTTPServerConfig, createHttpServer } from "./http-server";
 
 export type { UploadStuffHTTPServerType } from "./http-server";
@@ -25,7 +25,10 @@ export const toNextJsHandler = <
 }) => {
   const app = createHttpServer({
     fileRouter,
-    uploadStuff,
+    // The internal server layer operates on the erased `AnyUploadStuff`. A
+    // concrete instance is assignable to it, but TS can't prove that for the
+    // abstract `TFields` inside this generic boundary — erase it explicitly here.
+    uploadStuff: uploadStuff as AnyUploadStuff,
     config,
     createContext,
   });

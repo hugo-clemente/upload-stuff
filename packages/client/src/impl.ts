@@ -218,6 +218,7 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
             opts?.onUploadBegin?.({ file: f.name });
             await uploadFileWithProgress({
               uploadUrl: plan.uploadUrl,
+              uploadHeaders: plan.uploadHeaders,
               file: f,
               onProgress: (loaded) => {
                 const delta = loaded - lastLoaded;
@@ -398,12 +399,14 @@ export const preprocessImages =
 
 const uploadFileWithProgress = async ({
   uploadUrl,
+  uploadHeaders,
   file,
   onProgress,
   onInitXhr,
   signal,
 }: {
   uploadUrl: string;
+  uploadHeaders?: Record<string, string>;
   file: File;
   onProgress?: (uploadedBytes: number) => void;
   onInitXhr?: (xhr: XMLHttpRequest) => void;
@@ -413,6 +416,13 @@ const uploadFileWithProgress = async ({
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", uploadUrl);
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    // Replay any signed headers (e.g. `x-amz-meta-*`) the storage adapter
+    // required, otherwise the presigned signature check rejects the PUT.
+    if (uploadHeaders) {
+      for (const [name, value] of Object.entries(uploadHeaders)) {
+        xhr.setRequestHeader(name, value);
+      }
+    }
 
     let onAbort: (() => void) | undefined;
     const cleanup = () => {

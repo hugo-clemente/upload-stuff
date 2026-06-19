@@ -1,4 +1,4 @@
-import type { DatabaseAdapter, DatabaseFile } from "@upload-stuff/core";
+import type { DatabaseAdapter, DatabaseFile, FieldsDeclaration } from "@upload-stuff/core";
 
 /**
  * Minimal structural shape of the Prisma `File` delegate this adapter uses.
@@ -22,11 +22,14 @@ type PrismaClientLike = {
 };
 /* oxlint-enable @typescript-eslint/no-explicit-any */
 
-export const prismaAdapter = <TFileUsageContext extends string = string>({
+export const prismaAdapter = <
+  TFileUsageContext extends string = string,
+  TFields extends FieldsDeclaration = Record<never, never>,
+>({
   prisma,
 }: {
   prisma: PrismaClientLike;
-}): DatabaseAdapter<TFileUsageContext> => {
+}): DatabaseAdapter<TFileUsageContext, TFields> => {
   return {
     createFiles: async ({ files }) => {
       await prisma.file.createMany({
@@ -49,7 +52,7 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
         },
       });
 
-      return files as DatabaseFile<TFileUsageContext>[];
+      return files as DatabaseFile<TFileUsageContext, TFields>[];
     },
 
     findFilesToCleanUp: async (params) => {
@@ -99,7 +102,7 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
         },
       });
 
-      return updatedFile as DatabaseFile<TFileUsageContext>;
+      return updatedFile as DatabaseFile<TFileUsageContext, TFields>;
     },
 
     deleteFiles: async (params) => {
