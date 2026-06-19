@@ -1,12 +1,21 @@
-/* oxlint-disable @typescript-eslint/no-explicit-any */
 import { createId } from "@paralleldrive/cuid2";
 import { subHours } from "date-fns";
 
+import { RESERVED_FIELD_NAMES } from "@upload-stuff/core";
 import type {
   CreateUploadStuffConfig,
+  DatabaseAdapter,
   DatabaseFile,
+  FieldsDeclaration,
+  FileIdGenerator,
+  FileKeyGenerator,
+  FilePublicUrlGenerator,
   FileUploadContent,
+  ObjectMetadataInput,
+  ObjectMetadataResolver,
+  StorageAdapter,
   UploadStuffConfig,
+  ValidateFieldsDeclaration,
 } from "@upload-stuff/core";
 
 const defaultFileIdGenerator = createId;
@@ -18,37 +27,11 @@ const defaultFileKeyGenerator = (params: {
   return `${params.fileId}-${params.filename}`;
 };
 
-export const UploadStuff = <TFileUsageContext extends string>({
-  storageAdapter,
-  databaseAdapter,
-  fileIdGenerator = defaultFileIdGenerator,
-  fileKeyGenerator = defaultFileKeyGenerator,
-  filePublicUrlGenerator,
-}: CreateUploadStuffConfig<TFileUsageContext>) => {
-  return {
-    $types: undefined as unknown as {
-      fileUsageContext: TFileUsageContext;
-    },
-
-    serverUtils: buildServerUtils({
-      storageAdapter,
-      databaseAdapter,
-      fileIdGenerator,
-      fileKeyGenerator,
-      filePublicUrlGenerator,
-    }),
-
-    __storageAdapter: storageAdapter,
-    __databaseAdapter: databaseAdapter,
-
-    __fileIdGenerator: fileIdGenerator,
-    __fileKeyGenerator: fileKeyGenerator,
-    __filePublicUrlGenerator: filePublicUrlGenerator,
-  };
-};
-
-const buildServerUtils = <TFileUsageContext extends string>(
-  config: UploadStuffConfig<TFileUsageContext>,
+const buildServerUtils = <
+  TFileUsageContext extends string,
+  TFields extends FieldsDeclaration = Record<never, never>,
+>(
+  config: UploadStuffConfig<TFileUsageContext, TFields>,
 ) => {
   const deleteFiles = async (fileIds: string[]) => {
     await config.databaseAdapter.deleteFiles({
@@ -72,7 +55,7 @@ const buildServerUtils = <TFileUsageContext extends string>(
 
     uploadFile: async (params: {
       data: Omit<
-        DatabaseFile<TFileUsageContext>,
+        DatabaseFile<TFileUsageContext, TFields>,
         "stored" | "id" | "key" | "storedAt" | "batchId" | "publicUrl" | "uploadSessionData"
       >;
       content: FileUploadContent;
@@ -97,6 +80,10 @@ const buildServerUtils = <TFileUsageContext extends string>(
       // storage first would leave an undiscoverable orphan object whenever the
       // row insert fails.
       await config.databaseAdapter.createFiles({
+        // `params.data` is `Omit<DatabaseFile<…, TFields>, …>` plus the columns
+        // added here; that reconstitutes a full `DatabaseFile`, but TS can't see
+        // through `Omit`/spread on the generic `InferFieldValues<TFields>` part,
+        // so assert it.
         files: [
           {
             ...params.data,
@@ -104,7 +91,7 @@ const buildServerUtils = <TFileUsageContext extends string>(
             key,
             publicUrl,
             stored: false,
-          },
+          } as DatabaseFile<TFileUsageContext, TFields>,
         ],
       });
 
@@ -113,10 +100,15 @@ const buildServerUtils = <TFileUsageContext extends string>(
         contentType: params.data.contentType,
         size: params.data.size,
         usageContext: params.data.usageContext,
-        entityId: params.data.entityId,
-        userId: params.data.uploadedBy,
         isPublic: params.data.isPublic,
-
+        // Resolve the typed `objectMetadata` from the row data so direct server
+        // uploads write the same object metadata as the presigned-upload flow.
+        // `params.data` carries `scope` and the declared custom fields; adding
+        // `key` completes the resolver's `ObjectMetadataInput`.
+        objectMetadata: config.objectMetadata?.({
+          ...params.data,
+          key,
+        } as ObjectMetadataInput<TFileUsageContext, TFields>),
         content: params.content,
       });
 
@@ -125,7 +117,7 @@ const buildServerUtils = <TFileUsageContext extends string>(
           id: id,
           stored: true,
           storedAt: new Date(),
-        },
+        } as Partial<DatabaseFile<TFileUsageContext, TFields>> & { id: string },
       });
 
       return file;
@@ -135,8 +127,110 @@ const buildServerUtils = <TFileUsageContext extends string>(
   };
 };
 
-export type UploadStuff<TFileUsageContext extends string> = ReturnType<
-  typeof UploadStuff<TFileUsageContext>
->;
+export type UploadStuff<
+  TFileUsageContext extends string,
+  TFields extends FieldsDeclaration = Record<never, never>,
+> = {
+  $types: {
+    fileUsageContext: TFileUsageContext;
+    fields: TFields;
+  };
+  serverUtils: ReturnType<typeof buildServerUtils<TFileUsageContext, TFields>>;
+  __storageAdapter: StorageAdapter;
+  __databaseAdapter: DatabaseAdapter<TFileUsageContext, TFields>;
+  __fileIdGenerator: FileIdGenerator;
+  __fileKeyGenerator: FileKeyGenerator;
+  __filePublicUrlGenerator: FilePublicUrlGenerator;
+  __objectMetadata: ObjectMetadataResolver<TFileUsageContext, TFields> | undefined;
+  /** The declared custom-field declaration, used to filter persisted values. */
+  __fields: TFields | undefined;
+};
 
-export type AnyUploadStuff = UploadStuff<any>;
+/**
+ * Erased instance type used by the internal server layer (handler / http-server),
+ * which only consults the `__*` members. `serverUtils` is the consumer-facing API
+ * and is intentionally left opaque here: its typed `uploadFile` signature uses
+ * `Omit<DatabaseFile<…, TFields>, …>`, which would otherwise block a concrete
+ * instance that declares a required custom field from erasing to this type.
+ */
+export type AnyUploadStuff = Omit<
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any
+  UploadStuff<any, any>,
+  "serverUtils"
+> & {
+  serverUtils: unknown;
+};
+
+/**
+ * Create an UploadStuff instance. Curried so the file-usage-context union can be
+ * given explicitly while the custom-`fields` declaration is inferred from the
+ * config (TypeScript can't partially infer generics in a single call).
+ *
+ * ```ts
+ * const uploadStuff = UploadStuff<"avatar" | "document">()({ ...config });
+ * ```
+ */
+export const UploadStuff =
+  <TFileUsageContext extends string = string>() =>
+  <TFields extends FieldsDeclaration = Record<never, never>>(
+    // The `& { fields?: ValidateFieldsDeclaration<TFields> }` intersection blocks
+    // declaring a custom field whose name collides with a reserved column (#1) at
+    // the type level, while keeping `TFields` inferred from `config.fields`.
+    config: CreateUploadStuffConfig<TFileUsageContext, TFields> & {
+      fields?: ValidateFieldsDeclaration<TFields>;
+    },
+  ): UploadStuff<TFileUsageContext, TFields> => {
+    const {
+      storageAdapter,
+      databaseAdapter,
+      fileIdGenerator = defaultFileIdGenerator,
+      fileKeyGenerator = defaultFileKeyGenerator,
+      filePublicUrlGenerator,
+      objectMetadata,
+      fields,
+    } = config;
+
+    // Belt-and-suspenders to the type-level guard above: reject reserved field
+    // names at runtime too, so a JS caller (or a cast) can't slip a custom field
+    // that would overwrite library-owned columns at insert time.
+    if (fields) {
+      const reserved = (RESERVED_FIELD_NAMES as readonly string[]).filter((name) =>
+        Object.prototype.hasOwnProperty.call(fields, name),
+      );
+      if (reserved.length > 0) {
+        throw new Error(
+          `upload-stuff: custom field(s) ${reserved
+            .map((name) => `"${name}"`)
+            .join(", ")} use a reserved column name. Reserved names: ${RESERVED_FIELD_NAMES.join(
+            ", ",
+          )}.`,
+        );
+      }
+    }
+
+    return {
+      $types: undefined as unknown as {
+        fileUsageContext: TFileUsageContext;
+        fields: TFields;
+      },
+
+      serverUtils: buildServerUtils<TFileUsageContext, TFields>({
+        storageAdapter,
+        databaseAdapter,
+        fileIdGenerator,
+        fileKeyGenerator,
+        filePublicUrlGenerator,
+        objectMetadata,
+        fields,
+      }),
+
+      __storageAdapter: storageAdapter,
+      __databaseAdapter: databaseAdapter,
+
+      __fileIdGenerator: fileIdGenerator,
+      __fileKeyGenerator: fileKeyGenerator,
+      __filePublicUrlGenerator: filePublicUrlGenerator,
+      __objectMetadata: objectMetadata,
+      __fields: fields,
+    };
+  };

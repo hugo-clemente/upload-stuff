@@ -16,5 +16,11 @@ export type UploadedFileData = z.infer<typeof uploadedFileSchema>;
 
 export const toUploadFileSchema = uploadedFileSchema.extend({
   uploadUrl: z.string(),
+  /**
+   * Headers the client must replay on the PUT for the signature to match (e.g.
+   * signed `x-amz-meta-*` when the route resolves object metadata). Omitted when
+   * the presigned upload requires no extra headers beyond `Content-Type`.
+   */
+  uploadHeaders: z.record(z.string(), z.string()).optional(),
 });
 export type ToUploadFileData = z.infer<typeof toUploadFileSchema>;

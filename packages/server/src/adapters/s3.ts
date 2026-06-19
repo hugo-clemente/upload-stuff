@@ -1,7 +1,7 @@
 import * as AWS from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-import type { StorageAdapter } from "@upload-stuff/core";
+import type { StorageAdapter, StorageObjectInfo } from "@upload-stuff/core";
 
 export const s3Adapter = (params: {
   config: AWS.S3ClientConfig;
@@ -34,26 +34,23 @@ export const s3Adapter = (params: {
     }
   };
 
-  const buildPutObjectInput = (params: {
-    key: string;
-    contentType: string;
-    size: number;
-    usageContext: string;
-    entityId?: string;
-    userId?: string;
-    isPublic: boolean;
-  }): AWS.PutObjectCommandInput => ({
+  const buildPutObjectInput = (info: StorageObjectInfo): AWS.PutObjectCommandInput => ({
     Bucket: bucket,
-    Key: params.key,
-    ContentType: params.contentType,
-    ContentLength: params.size,
-    Metadata: {
-      "uploaded-by": params.userId || "",
-      "usage-context": params.usageContext,
-      "entity-id": params.entityId || "",
-    },
-    ACL: params.isPublic ? "public-read" : "private",
+    Key: info.key,
+    ContentType: info.contentType,
+    ContentLength: info.size,
+    Metadata: info.objectMetadata ?? {},
+    ACL: info.isPublic ? "public-read" : "private",
   });
+
+  // S3 signs `x-amz-meta-*` into the presigned PUT, so the client must replay
+  // those exact headers or the signature check fails. Surface them as
+  // `requiredHeaders` for the upload plan. `Content-Type` is signed too but the
+  // client always sends it, so it's intentionally left out here.
+  const metadataHeaders = (objectMetadata: Record<string, string> | undefined) =>
+    Object.fromEntries(
+      Object.entries(objectMetadata ?? {}).map(([key, value]) => [`x-amz-meta-${key}`, value]),
+    );
 
   return {
     generatePresignedUpload: async (params) => {
@@ -63,8 +60,11 @@ export const s3Adapter = (params: {
         expiresIn: 3600, // 1 hour
       });
 
+      const requiredHeaders = metadataHeaders(params.objectMetadata);
+
       return {
         uploadUrl,
+        requiredHeaders: Object.keys(requiredHeaders).length > 0 ? requiredHeaders : undefined,
       };
     },
 

@@ -1,4 +1,4 @@
-import type { DatabaseAdapter, DatabaseFile } from "@upload-stuff/core";
+import type { DatabaseAdapter, DatabaseFile, FieldsDeclaration } from "@upload-stuff/core";
 
 /**
  * Minimal structural shape of the Prisma `File` delegate this adapter uses.
@@ -22,11 +22,14 @@ type PrismaClientLike = {
 };
 /* oxlint-enable @typescript-eslint/no-explicit-any */
 
-export const prismaAdapter = <TFileUsageContext extends string = string>({
+export const prismaAdapter = <
+  TFileUsageContext extends string = string,
+  TFields extends FieldsDeclaration = Record<never, never>,
+>({
   prisma,
 }: {
   prisma: PrismaClientLike;
-}): DatabaseAdapter<TFileUsageContext> => {
+}): DatabaseAdapter<TFileUsageContext, TFields> => {
   return {
     createFiles: async ({ files }) => {
       await prisma.file.createMany({
@@ -38,18 +41,18 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
       });
     },
 
-    findFilesByBatchIdAndUploadedBy: async (params) => {
+    findFilesByBatchIdAndScope: async (params) => {
       const files = await prisma.file.findMany({
         where: {
           batchId: params.batchId,
           // `?? null` matters: Prisma drops a `field: undefined` clause
           // entirely (matches all rows), whereas `field: null` matches
           // IS NULL. Anonymous uploads must only match anonymous batches.
-          uploadedBy: params.uploadedBy ?? null,
+          scope: params.scope ?? null,
         },
       });
 
-      return files as DatabaseFile<TFileUsageContext>[];
+      return files as DatabaseFile<TFileUsageContext, TFields>[];
     },
 
     findFilesToCleanUp: async (params) => {
@@ -73,9 +76,9 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
       const res = await prisma.file.updateMany({
         where: {
           batchId: params.batchId,
-          // See findFilesByBatchIdAndUploadedBy — `?? null` keeps the owner
-          // filter from silently vanishing for anonymous uploads.
-          uploadedBy: params.uploadedBy ?? null,
+          // See findFilesByBatchIdAndScope — `?? null` keeps the scope filter
+          // from silently vanishing for anonymous uploads.
+          scope: params.scope ?? null,
           stored: false,
         },
         data: {
@@ -99,7 +102,7 @@ export const prismaAdapter = <TFileUsageContext extends string = string>({
         },
       });
 
-      return updatedFile as DatabaseFile<TFileUsageContext>;
+      return updatedFile as DatabaseFile<TFileUsageContext, TFields>;
     },
 
     deleteFiles: async (params) => {
