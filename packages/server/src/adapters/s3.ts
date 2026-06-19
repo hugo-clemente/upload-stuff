@@ -55,12 +55,15 @@ export const s3Adapter = (params: {
   return {
     generatePresignedUpload: async (params) => {
       const command = new AWS.PutObjectCommand(buildPutObjectInput(params));
+      const requiredHeaders = metadataHeaders(params.objectMetadata);
 
       const uploadUrl = await getSignedUrl(s3Client, command, {
         expiresIn: 3600, // 1 hour
+        // Keep x-amz-meta-* as SIGNED HEADERS (not hoisted into the query string):
+        // the client replays them via requiredHeaders, and hoisted+replayed would be
+        // an unsigned-header signature mismatch. Also keeps metadata out of the URL.
+        unhoistableHeaders: new Set(Object.keys(requiredHeaders)),
       });
-
-      const requiredHeaders = metadataHeaders(params.objectMetadata);
 
       return {
         uploadUrl,
