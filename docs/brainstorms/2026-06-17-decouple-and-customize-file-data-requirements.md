@@ -29,7 +29,7 @@ The word "metadata" is overloaded across two genuinely different sinks. `package
 
 - **Storage object metadata moves into the storage adapter.** Object metadata is a storage-vendor concept (S3/GCS/R2 have it; a generic byte store may not). Moving it out of the route builder serves the storage-agnostic goal and removes a builder method; the adapter, which already knows it is S3, derives metadata from the file row.
 
-- **Distinct builder methods over a single consolidated resolver.** The builder steps map to distinct lifecycles (`middleware` runs init + complete; `fields` persists at init only; `onUploadComplete` runs once at complete). Collapsing them into one resolver would re-create the same conflation the redesign removes. The accepted surface is five methods.
+- **Distinct builder methods over a single consolidated resolver.** The builder steps map to distinct lifecycles (`middleware` runs at init; `fields` persists at init; `onUploadComplete` runs once at completion). Collapsing them into one resolver would re-create the same conflation the redesign removes. The accepted surface is five methods.
 
 ## Requirements
 
@@ -55,14 +55,14 @@ The word "metadata" is overloaded across two genuinely different sinks. `package
 **Builder and context API**
 
 - R11. The route-builder surface is exactly `input`, `scope`, `middleware`, `fields`, `onUploadComplete`.
-- R12. `middleware` runs at init and at completion; its result is forwarded fresh from the completion run to `onUploadComplete`, is never persisted, and may throw to reject a request.
+- R12. `middleware` runs once at init; its result is persisted and forwarded to `onUploadComplete` at completion, and it may throw to reject a request. It is not re-run at completion — `scope` owns the completion ownership check.
 - R13. `ctx` is fully user-defined; the library no longer requires a `userId` field on the context type.
 
 **Adapter and persistence contract**
 
 - R14. The `DatabaseAdapter` interface drops `uploadedBy` from its method names and parameters and scopes by `scope` instead (e.g. `findFilesByBatchIdAndScope`, `updateFilesToStored({ batchId, scope, storedAt })`).
 - R15. The canonical persisted row is the library state-machine columns plus declared custom fields; `uploadedBy` and `entityId` leave the built-in shape.
-- R16. `uploadSessionData` stores only `{ input, endpoint }`; `middlewareData` is no longer persisted.
+- R16. `uploadSessionData` stores `{ input, middlewareData, endpoint }`; `middlewareData` is persisted and forwarded to `onUploadComplete` (not recomputed).
 
 ## How the data fans out
 
@@ -72,7 +72,7 @@ Each route resolver feeds a specific sink at a specific moment. The file row is 
 flowchart TB
   scope[".scope() — init + re-run at complete"] --> scopeCol["row.scope (library column)"]
   fields[".fields() — init only"] --> customCols["row.* (declared custom columns)"]
-  middleware[".middleware() — init + complete, ephemeral"] --> onComplete[".onUploadComplete()"]
+  middleware[".middleware() — init only, persisted"] --> onComplete[".onUploadComplete()"]
   scopeCol -->|filter at complete| guard["completion ownership check"]
   scopeCol --> adapter["storage adapter: objectMetadata(file)"]
   customCols --> adapter
@@ -97,15 +97,11 @@ Canonical row shape, before and after:
 - AE2. Different principal attempts finalize.
   - **Given:** a batch initialized with `scope = "user:A"`.
   - **When:** a request whose re-derived `scope = "user:B"` calls complete with the batchId.
-  - **Then:** the lookup matches no rows and the completion is rejected; `onUploadComplete` does not run. **Covers R3, R12.**
+  - **Then:** the lookup matches no rows and the completion is rejected; `onUploadComplete` does not run. **Covers R3.**
 - AE3. Anonymous batch.
   - **Given:** a batch initialized with `scope` undefined.
   - **When:** any request completes it with the batchId.
   - **Then:** it finalizes — a leaked batchId is acceptable here because nothing private is protected. **Covers R4.**
-- AE4. Request now unauthorized at completion.
-  - **Given:** a batch whose re-derived scope still matches.
-  - **When:** `middleware` throws at the completion run (e.g. the principal is now suspended).
-  - **Then:** completion is rejected despite the scope match. **Covers R12.**
 
 ## Scope Boundaries
 
