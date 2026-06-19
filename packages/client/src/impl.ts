@@ -149,6 +149,8 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
         }
         isUploadingRef.current = true;
 
+        const requestHeaders = mergeHeaders(opts?.headers, runOpts?.headers);
+
         const signal = runOpts?.signal;
         let onAbort: (() => void) | undefined;
 
@@ -170,15 +172,18 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
 
           validateFiles(meta, routeConfig);
 
-          const uploadPlan = await initMutation({
-            param: {
-              endpoint: resolvedEndpoint as string,
+          const uploadPlan = await initMutation(
+            {
+              param: {
+                endpoint: resolvedEndpoint as string,
+              },
+              json: {
+                input: input ?? null,
+                files: meta,
+              },
             },
-            json: {
-              input: input ?? null,
-              files: meta,
-            },
-          });
+            { headers: requestHeaders },
+          );
 
           totalBytesRef.current = preparedFiles.reduce((acc, f) => acc + f.size, 0);
 
@@ -243,14 +248,17 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
             throw new Error("Upload aborted.");
           }
 
-          const verified = await completeMutation({
-            param: {
-              endpoint: resolvedEndpoint as string,
+          const verified = await completeMutation(
+            {
+              param: {
+                endpoint: resolvedEndpoint as string,
+              },
+              json: {
+                batchId: uploadPlan.batchId,
+              },
             },
-            json: {
-              batchId: uploadPlan.batchId,
-            },
-          });
+            { headers: requestHeaders },
+          );
 
           // Only report 100% on success — a failed/aborted upload must not
           // leave the consumer's progress UI showing a completed bar.
@@ -396,6 +404,15 @@ export const preprocessImages =
       }),
     );
   };
+
+const mergeHeaders = (...inits: Array<HeadersInit | undefined>): Record<string, string> => {
+  const out = new Headers();
+  for (const init of inits) {
+    if (!init) continue;
+    new Headers(init).forEach((value, key) => out.set(key, value));
+  }
+  return Object.fromEntries(out.entries());
+};
 
 const uploadFileWithProgress = async ({
   uploadUrl,
