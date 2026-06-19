@@ -29,20 +29,22 @@ From the repo root:
 
 ```sh
 pnpm install
-pnpm -F './packages/*' build          # build the workspace libraries first
-pnpm --filter @upload-stuff/example-kitchen-sink dev
+pnpm -F './packages/*' build                                      # build the workspace libs first
+pnpm --filter @upload-stuff/example-kitchen-sink env:start        # start Postgres + MinIO, push schema, generate client
+pnpm --filter @upload-stuff/example-kitchen-sink dev              # run the app
 ```
 
-`dev` runs `predev` automatically: it brings up Docker (Postgres + MinIO + a one-shot
-`mc` that creates the public `uploads` bucket), then runs `prisma db push` and
-`prisma generate`. Then open http://localhost:3000.
+`env:start` brings up Docker (Postgres + MinIO + a one-shot `mc` that creates the
+public `uploads` bucket), then runs `prisma db push` and `prisma generate`. `dev` then
+just runs `next dev` — open http://localhost:3000.
 
 MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin`). Postgres is
 published on host port `5433` (see `.env`), so it won't collide with a Postgres you may
 already run on the default `5432`.
 
-To stop the infra: `cd examples/kitchen-sink && docker compose down` (add `-v` to wipe
-the data volumes).
+To stop the infra: `pnpm --filter @upload-stuff/example-kitchen-sink env:down`
+(this keeps the data volumes; add `docker compose down -v` from `examples/kitchen-sink`
+to also wipe them).
 
 ## Notes
 

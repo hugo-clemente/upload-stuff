@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "docker compose up -d --wait postgres && docker compose up -d minio minio-setup && prisma db push --skip-generate && prisma generate",
+    "env:start": "docker compose up -d --wait postgres && docker compose up -d minio minio-setup && prisma db push --skip-generate && prisma generate",
+    "env:down": "docker compose down",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
