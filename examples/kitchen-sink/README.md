@@ -26,11 +26,10 @@ its persisted DB row — plus a per-user gallery and a `.scope()` ownership-guar
 
 ## Run
 
-From the repo root:
+From `examples/kitchen-sink/` (`env:start`/`dev` are this package's scripts):
 
 ```sh
-pnpm install
-pnpm -F './packages/*' build                                      # build the workspace libs first
+pnpm install          # installs the whole workspace
 pnpm env:start        # start Postgres + MinIO, push schema, generate client
 pnpm dev              # run the app
 ```
@@ -38,6 +37,11 @@ pnpm dev              # run the app
 `env:start` brings up Docker (Postgres + MinIO + a one-shot `mc` that creates the
 public `uploads` bucket), then runs `prisma db push` and `prisma generate`. `dev` then
 just runs `next dev` — open http://localhost:3000.
+
+This example resolves the `@upload-stuff/*` packages from their **source** (via the
+`paths` in `tsconfig.json`), so there's no library build step and your editor's types
+never go stale when a package changes. (To exercise the published build instead, drop
+those `paths` and run `pnpm -F './packages/*' build` first.)
 
 MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin`). Postgres is
 published on host port `5433` (see `.env`), so it won't collide with a Postgres you may

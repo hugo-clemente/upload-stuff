@@ -20,6 +20,24 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@upload-stuff/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@upload-stuff/server": [
+        "../../packages/server/src/index.ts"
+      ],
+      "@upload-stuff/server/next": [
+        "../../packages/server/src/next/index.ts"
+      ],
+      "@upload-stuff/server/adapters/s3": [
+        "../../packages/server/src/adapters/s3.ts"
+      ],
+      "@upload-stuff/server/adapters/prisma": [
+        "../../packages/server/src/adapters/prisma.ts"
+      ],
+      "@upload-stuff/client": [
+        "../../packages/client/src/index.ts"
       ]
     },
     "plugins": [
