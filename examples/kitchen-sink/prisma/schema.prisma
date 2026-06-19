@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model File {
+  id                String    @id
+  key               String    @unique
+  filename          String
+  size              Int
+  publicUrl         String
+  contentType       String
+  uploadSessionData Json?
+  usageContext      String
+  isPublic          Boolean   @default(false)
+  stored            Boolean   @default(false)
+  storedAt          DateTime?
+  batchId           String?
+  scope             String?
+  caption           String?
+  createdAt         DateTime  @default(now())
+}
