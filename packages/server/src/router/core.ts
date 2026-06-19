@@ -54,7 +54,6 @@ export const createCore = <TFileUsageContext extends string>(
     fileKeyGenerator,
     fileIdGenerator,
     filePublicUrlGenerator,
-    objectMetadata,
     fields,
   } = config;
 
@@ -110,20 +109,15 @@ export const createCore = <TFileUsageContext extends string>(
           filePublicUrlGenerator({ key }),
           storageAdapter.generatePresignedUpload({
             key,
+            filename: file.filename,
             contentType: file.contentType,
             size: file.size,
             usageContext: config.usageContext,
             isPublic: config.isPublic,
-            objectMetadata: objectMetadata?.({
-              key,
-              filename: file.filename,
-              size: file.size,
-              contentType: file.contentType,
-              usageContext: config.usageContext,
-              isPublic: config.isPublic,
-              scope,
-              ...safeFieldValues,
-            }),
+            scope,
+            // Raw declared field values; the storage adapter resolves its own
+            // object metadata from these (the core no longer pre-resolves it).
+            fields: safeFieldValues,
           }),
         ]);
 

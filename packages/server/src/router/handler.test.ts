@@ -93,8 +93,8 @@ const setup = () => {
     }),
   };
   const uploadStuff = UploadStuff()({
-    storageAdapter: fakeStorageAdapter(),
-    databaseAdapter: fakeDatabaseAdapter(),
+    storageAdapter: () => fakeStorageAdapter(),
+    databaseAdapter: () => fakeDatabaseAdapter(),
     filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
   });
   const handlers = fileRouteHandlers({ fileRouter, uploadStuff });
@@ -110,8 +110,8 @@ const setupScoped = (scope: AnyFileRoute["scope"]) => {
     avatars: makeRoute(() => ({ route: "avatars" }), scope),
   };
   const uploadStuff = UploadStuff()({
-    storageAdapter: fakeStorageAdapter(),
-    databaseAdapter: fakeDatabaseAdapter(),
+    storageAdapter: () => fakeStorageAdapter(),
+    databaseAdapter: () => fakeDatabaseAdapter(),
     filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
   });
   return fileRouteHandlers({ fileRouter, uploadStuff });
@@ -176,8 +176,8 @@ describe("presigned upload headers (#5)", () => {
       }),
     };
     const uploadStuff = UploadStuff()({
-      storageAdapter,
-      databaseAdapter: fakeDatabaseAdapter(),
+      storageAdapter: () => storageAdapter,
+      databaseAdapter: () => fakeDatabaseAdapter(),
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
     });
     const handlers = fileRouteHandlers({
@@ -203,8 +203,8 @@ describe("custom field persistence (#8 / #1)", () => {
       },
     };
     const uploadStuff = UploadStuff()({
-      storageAdapter: fakeStorageAdapter(),
-      databaseAdapter,
+      storageAdapter: () => fakeStorageAdapter(),
+      databaseAdapter: () => databaseAdapter,
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
       fields: {
         entityId: { type: "string", required: false },

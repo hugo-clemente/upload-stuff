@@ -36,7 +36,7 @@ const fakePrisma = () => {
 describe("prismaAdapter.deleteFiles", () => {
   it("deletes from storage before deleting DB rows", async () => {
     const fake = fakePrisma();
-    const adapter = prismaAdapter({ prisma: fake.client });
+    const adapter = prismaAdapter({ prisma: fake.client })({});
     const deletedKeys: string[][] = [];
 
     await adapter.deleteFiles({
@@ -54,7 +54,7 @@ describe("prismaAdapter.deleteFiles", () => {
 
   it("keeps DB rows when the storage delete fails", async () => {
     const fake = fakePrisma();
-    const adapter = prismaAdapter({ prisma: fake.client });
+    const adapter = prismaAdapter({ prisma: fake.client })({});
 
     await expect(
       adapter.deleteFiles({

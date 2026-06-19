@@ -7,8 +7,9 @@ its persisted DB row — plus a per-user gallery and a `.scope()` ownership-guar
 
 ## What it demonstrates
 
-- Curried `UploadStuff<"image">()` with a central typed `fields` (`caption`) and a
-  typed `objectMetadata` resolver (`owner` + `caption` → S3 object metadata).
+- Curried `UploadStuff<"image">()` with a central typed `fields` (`caption`) and the
+  s3 adapter's typed `objectMetadata` resolver (`owner` + `caption` → S3 object
+  metadata) — adapters are factories, so no adapter generics are passed by hand.
 - A file route using `.input()`, `.scope()`, `.fields()`, `.middleware()`, and
   `.onUploadComplete()`.
 - The Next.js handler with `createContext` reading the user id from an `x-user-id`
@@ -30,8 +31,8 @@ From the repo root:
 ```sh
 pnpm install
 pnpm -F './packages/*' build                                      # build the workspace libs first
-pnpm --filter @upload-stuff/example-kitchen-sink env:start        # start Postgres + MinIO, push schema, generate client
-pnpm --filter @upload-stuff/example-kitchen-sink dev              # run the app
+pnpm env:start        # start Postgres + MinIO, push schema, generate client
+pnpm dev              # run the app
 ```
 
 `env:start` brings up Docker (Postgres + MinIO + a one-shot `mc` that creates the
@@ -42,7 +43,7 @@ MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin`). Postgres is
 published on host port `5433` (see `.env`), so it won't collide with a Postgres you may
 already run on the default `5432`.
 
-To stop the infra: `pnpm --filter @upload-stuff/example-kitchen-sink env:down`
+To stop the infra: `pnpm env:down`
 (this keeps the data volumes; add `docker compose down -v` from `examples/kitchen-sink`
 to also wipe them).
 

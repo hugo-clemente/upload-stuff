@@ -53,6 +53,9 @@ export const uploadStuff = UploadStuff<FileUsageContext>()({
       },
     },
     bucket: process.env.S3_BUCKET!,
+    // Optional — write object-storage metadata, typed against `fields` below by
+    // inference. file.entityId is `string | undefined`, file.scope is `string | undefined`.
+    objectMetadata: (file) => ({ entity: file.entityId ?? "", owner: file.scope ?? "" }),
   }),
   databaseAdapter: prismaAdapter({ prisma }),
   filePublicUrlGenerator: ({ key }) => `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${key}`,
@@ -60,13 +63,12 @@ export const uploadStuff = UploadStuff<FileUsageContext>()({
   fields: {
     entityId: { type: "string", required: false },
   },
-  // Optional — write object-storage metadata, typed against `fields` above.
-  // file.entityId is `string | undefined`, file.scope is `string | undefined`.
-  objectMetadata: (file) => ({ entity: file.entityId ?? "", owner: file.scope ?? "" }),
 });
 ```
 
 `UploadStuff<FileUsageContext>()` is curried: the type argument fixes the file-usage-context union, and the second call infers the `fields` declaration from the config.
+
+The adapters are supplied as factories (`s3Adapter(...)`, `prismaAdapter(...)`): the library calls each with the instance's resolved types, so `TFileUsageContext` and `fields` are inferred end-to-end — you never pass adapter generics by hand, and an adapter's own typed options (like the S3 adapter's `objectMetadata`) are typed against your `fields` automatically.
 
 ### 2. Define a file router
 
@@ -215,12 +217,14 @@ const storage = s3Adapter({
     },
   },
   bucket: "my-bucket",
+  // Optional. Typed against the instance's `fields` by inference.
+  objectMetadata: (file) => ({ owner: file.scope ?? "" }),
 });
 ```
 
-The `config` field accepts the full `S3ClientConfig` from `@aws-sdk/client-s3`.
+`s3Adapter(...)` returns a factory that `UploadStuff(...)` calls with the instance's resolved types — pass it straight to `storageAdapter`. The `config` field accepts the full `S3ClientConfig` from `@aws-sdk/client-s3`.
 
-Object-storage metadata is configured by `objectMetadata` on `UploadStuff(...)` (typed against your `fields`), not on the adapter — the adapter just writes whatever the core resolves. It defaults to none. Object metadata is returned on every `GetObject`, so avoid exposing a `scope` that encodes a user id on public buckets unless you intend to.
+Object-storage metadata is configured by `objectMetadata` on the **s3 adapter** (typed against your `fields`), and defaults to none. The adapter signs it as `x-amz-meta-*` request headers (kept out of the presigned URL) and the client replays them on the PUT. Object metadata is returned on every `GetObject`, so avoid exposing a `scope` that encodes a user id on public buckets unless you intend to.
 
 ### Peer dependencies
 
@@ -240,7 +244,7 @@ import { prismaAdapter } from "@upload-stuff/server/adapters/prisma";
 const db = prismaAdapter({ prisma });
 ```
 
-**This is a reference adapter for one specific `File` schema** — it is not a general-purpose adapter. It implements the `DatabaseAdapter` interface from `@upload-stuff/core` against a particular Prisma model shape.
+**This is a reference adapter for one specific `File` schema** — it is not a general-purpose adapter. It implements the `DatabaseAdapter` interface from `@upload-stuff/core` against a particular Prisma model shape. `prismaAdapter({ prisma })` returns a factory; pass it straight to `databaseAdapter` and its types are inferred from your `UploadStuff(...)` config.
 
 ### Peer dependency
 
@@ -278,12 +282,12 @@ model File {
 
 ### Custom database adapter
 
-For any other ORM or database, implement the `DatabaseAdapter` interface from `@upload-stuff/core`:
+For any other ORM or database, implement the `DatabaseAdapter` interface from `@upload-stuff/core` and supply it as a factory (`DatabaseAdapterFactory`). The library calls the factory with a type-only marker, so you can let the types be inferred and ignore the argument:
 
 ```ts
-import type { DatabaseAdapter } from "@upload-stuff/core";
+import type { DatabaseAdapterFactory } from "@upload-stuff/core";
 
-const myAdapter: DatabaseAdapter<"avatar" | "document"> = {
+const myAdapter: DatabaseAdapterFactory<"avatar" | "document"> = () => ({
   createFiles: async ({ files }) => {
     /* ... */
   },
@@ -302,7 +306,9 @@ const myAdapter: DatabaseAdapter<"avatar" | "document"> = {
   deleteFiles: async (params) => {
     /* ... */
   },
-};
+});
+
+// ...then: databaseAdapter: myAdapter
 ```
 
 ## Server utilities

@@ -1,33 +1,41 @@
 import { expectTypeOf, it } from "vite-plus/test";
 
-import type { DatabaseAdapter, StorageAdapter } from "@upload-stuff/core";
+import type { DatabaseAdapterFactory, StorageAdapterFactory } from "@upload-stuff/core";
 
+import { s3Adapter } from "./adapters/s3";
 import { UploadStuff } from "./upload-stuff";
 
-declare const storageAdapter: StorageAdapter;
-// `TFields` is inferred from the `fields` declaration (the adapter position is
-// `NoInfer`); the adapter just has to be assignable, so `any` keeps this fixture
-// focused on the `objectMetadata` typing under test.
+// Adapter factories. `TFields` is inferred from the central `fields` declaration
+// (the adapter positions are `NoInfer`), so `any` keeps these fixtures focused on
+// the typing under test.
 // oxlint-disable-next-line @typescript-eslint/no-explicit-any
-declare const databaseAdapter: DatabaseAdapter<"avatar", any>;
+declare const databaseAdapter: DatabaseAdapterFactory<"avatar", any>;
+// oxlint-disable-next-line @typescript-eslint/no-explicit-any
+declare const storageAdapter: StorageAdapterFactory<"avatar", any>;
 
-it("types the objectMetadata resolver against the declared fields", () => {
+it("types the storage adapter's objectMetadata resolver against the declared fields", () => {
   UploadStuff<"avatar">()({
-    storageAdapter,
+    // The s3 adapter's `objectMetadata` is typed purely by inference: `TFields` is
+    // resolved from `fields` below and flows into the adapter factory's contextual
+    // type, so `file` is precise with no annotation.
+    storageAdapter: s3Adapter({
+      config: {},
+      bucket: "bucket",
+      objectMetadata: (file) => {
+        // declared fields are typed from the central declaration
+        expectTypeOf(file.entityId).toEqualTypeOf<string | undefined>();
+        expectTypeOf(file.count).toEqualTypeOf<number>();
+        // library columns come through too
+        expectTypeOf(file.scope).toEqualTypeOf<string | undefined>();
+        expectTypeOf(file.usageContext).toEqualTypeOf<"avatar">();
+        return { entity: file.entityId ?? "", count: String(file.count) };
+      },
+    }),
     databaseAdapter,
     filePublicUrlGenerator: ({ key }) => key,
     fields: {
       entityId: { type: "string", required: false },
       count: { type: "number", required: true },
-    },
-    objectMetadata: (file) => {
-      // declared fields are typed from the central declaration
-      expectTypeOf(file.entityId).toEqualTypeOf<string | undefined>();
-      expectTypeOf(file.count).toEqualTypeOf<number>();
-      // library columns come through too
-      expectTypeOf(file.scope).toEqualTypeOf<string | undefined>();
-      expectTypeOf(file.usageContext).toEqualTypeOf<"avatar">();
-      return { entity: file.entityId ?? "", count: String(file.count) };
     },
   });
 });

@@ -27,8 +27,8 @@ describe("UploadStuff reserved field names (#1)", () => {
   it("throws when a custom field reuses a reserved column name", () => {
     expect(() =>
       UploadStuff()({
-        storageAdapter: fakeStorageAdapter(),
-        databaseAdapter: fakeDatabaseAdapter(),
+        storageAdapter: () => fakeStorageAdapter(),
+        databaseAdapter: () => fakeDatabaseAdapter(),
         filePublicUrlGenerator: ({ key }) => key,
         // `as any` bypasses the type-level guard to exercise the runtime guard,
         // standing in for a plain-JS caller.
@@ -40,8 +40,8 @@ describe("UploadStuff reserved field names (#1)", () => {
   it("accepts non-reserved custom field names", () => {
     expect(() =>
       UploadStuff()({
-        storageAdapter: fakeStorageAdapter(),
-        databaseAdapter: fakeDatabaseAdapter(),
+        storageAdapter: () => fakeStorageAdapter(),
+        databaseAdapter: () => fakeDatabaseAdapter(),
         filePublicUrlGenerator: ({ key }) => key,
         fields: { entityId: { type: "string" } },
       }),
@@ -49,8 +49,8 @@ describe("UploadStuff reserved field names (#1)", () => {
   });
 });
 
-describe("serverUtils.uploadFile objectMetadata (#6)", () => {
-  it("resolves objectMetadata and forwards it to the storage adapter", async () => {
+describe("serverUtils.uploadFile forwards row data to the storage adapter (#6)", () => {
+  it("passes scope and the declared field values so the adapter can resolve object metadata", async () => {
     const uploads: Array<StorageObjectInfo> = [];
     const storageAdapter: StorageAdapter = {
       ...fakeStorageAdapter(),
@@ -61,14 +61,13 @@ describe("serverUtils.uploadFile objectMetadata (#6)", () => {
     };
 
     const uploadStuff = UploadStuff()({
-      storageAdapter,
-      databaseAdapter: fakeDatabaseAdapter(),
+      storageAdapter: () => storageAdapter,
+      databaseAdapter: () => fakeDatabaseAdapter(),
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
       fields: {
         entityId: { type: "string", required: false },
         count: { type: "number", required: true },
       },
-      objectMetadata: (file) => ({ owner: file.entityId ?? "", n: String(file.count) }),
     });
 
     await uploadStuff.serverUtils.uploadFile({
@@ -78,6 +77,7 @@ describe("serverUtils.uploadFile objectMetadata (#6)", () => {
         size: 10,
         usageContext: "avatar",
         isPublic: false,
+        scope: "owner-1",
         entityId: "e1",
         count: 5,
       },
@@ -85,6 +85,10 @@ describe("serverUtils.uploadFile objectMetadata (#6)", () => {
     });
 
     expect(uploads).toHaveLength(1);
-    expect(uploads[0]!.objectMetadata).toEqual({ owner: "e1", n: "5" });
+    expect(uploads[0]!.scope).toBe("owner-1");
+    expect(uploads[0]!.filename).toBe("a.png");
+    // Only the declared custom fields are forwarded (filtered to the declaration);
+    // the storage adapter resolves its own object metadata from these.
+    expect(uploads[0]!.fields).toEqual({ entityId: "e1", count: 5 });
   });
 });

@@ -1,4 +1,9 @@
-import type { DatabaseAdapter, DatabaseFile, FieldsDeclaration } from "@upload-stuff/core";
+import type {
+  AdapterTypeInfo,
+  DatabaseAdapter,
+  DatabaseFile,
+  FieldsDeclaration,
+} from "@upload-stuff/core";
 
 /**
  * Minimal structural shape of the Prisma `File` delegate this adapter uses.
@@ -22,14 +27,21 @@ type PrismaClientLike = {
 };
 /* oxlint-enable @typescript-eslint/no-explicit-any */
 
-export const prismaAdapter = <
-  TFileUsageContext extends string = string,
-  TFields extends FieldsDeclaration = Record<never, never>,
->({
-  prisma,
-}: {
-  prisma: PrismaClientLike;
-}): DatabaseAdapter<TFileUsageContext, TFields> => {
+// Curried so it's supplied to `UploadStuff(...)` as a factory: the library calls
+// the returned function with a type marker, which infers TFileUsageContext/TFields
+// from the instance config — consumers never pass adapter generics by hand. The
+// generics sit on the outer call (matching s3Adapter) so the config object can
+// also carry field-typed options if a future adapter needs them.
+export const prismaAdapter =
+  <
+    TFileUsageContext extends string = string,
+    TFields extends FieldsDeclaration = Record<never, never>,
+  >({
+    prisma,
+  }: {
+    prisma: PrismaClientLike;
+  }) =>
+  (_info: AdapterTypeInfo<TFileUsageContext, TFields>): DatabaseAdapter<TFileUsageContext, TFields> => {
   return {
     createFiles: async ({ files }) => {
       await prisma.file.createMany({

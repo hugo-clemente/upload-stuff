@@ -1,4 +1,3 @@
-import type { FieldsDeclaration } from "@upload-stuff/core";
 import { UploadStuff } from "@upload-stuff/server";
 import { s3Adapter } from "@upload-stuff/server/adapters/s3";
 import { prismaAdapter } from "@upload-stuff/server/adapters/prisma";
@@ -10,9 +9,10 @@ import { prisma } from "./prisma";
 const MINIO_ENDPOINT = "http://localhost:9000";
 const BUCKET = "uploads";
 
-// Single source of truth for custom fields; `typeof fields` feeds the generics below.
-const fields = { caption: { type: "string", required: false } } as const satisfies FieldsDeclaration;
-
+// Adapters are supplied as factories, so their types are inferred from this config —
+// no explicit generics anywhere. `fields` is the single source of truth, and the
+// s3 adapter's `objectMetadata` is typed against it by inference (file.caption /
+// file.scope are typed with no annotation).
 export const uploadStuff = UploadStuff<"image">()({
   storageAdapter: s3Adapter({
     config: {
@@ -25,13 +25,11 @@ export const uploadStuff = UploadStuff<"image">()({
       },
     },
     bucket: BUCKET,
+    objectMetadata: (file) => ({ owner: file.scope ?? "", caption: file.caption ?? "" }),
   }),
-  databaseAdapter: prismaAdapter<"image", typeof fields>({ prisma }),
+  databaseAdapter: prismaAdapter({ prisma }),
   filePublicUrlGenerator: ({ key }) => `${MINIO_ENDPOINT}/${BUCKET}/${key}`,
-  fields,
-  // Typed against `fields`: file.scope is string|undefined, file.caption is string|undefined.
-  objectMetadata: (file) => ({
-    owner: file.scope ?? "",
-    caption: file.caption ?? "",
-  }),
+  fields: {
+    caption: { type: "string", required: false },
+  },
 });
