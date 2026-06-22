@@ -26,7 +26,6 @@ it("types the storage adapter's objectMetadata resolver against the declared fie
         expectTypeOf(file.entityId).toEqualTypeOf<string | undefined>();
         expectTypeOf(file.count).toEqualTypeOf<number>();
         // library columns come through too
-        expectTypeOf(file.scope).toEqualTypeOf<string | undefined>();
         expectTypeOf(file.usageContext).toEqualTypeOf<"avatar">();
         return { entity: file.entityId ?? "", count: String(file.count) };
       },
@@ -46,8 +45,8 @@ it("rejects a custom field that reuses a reserved column name (#1)", () => {
     databaseAdapter,
     filePublicUrlGenerator: ({ key }) => key,
     fields: {
-      // @ts-expect-error `scope` is a reserved library column name
-      scope: { type: "string", required: false },
+      // @ts-expect-error `stored` is a reserved library column name
+      stored: { type: "string", required: false },
     },
   });
 });

@@ -95,7 +95,7 @@ const buildServerUtils = <
       });
 
       // Pass the raw row data; the storage adapter resolves its own object
-      // metadata from `scope` + the declared `fields` (the core no longer does),
+      // metadata from the declared `fields` (the core no longer does),
       // so direct server uploads write the same metadata as the presigned flow.
       const declaredFieldNames = Object.keys(config.fields ?? {});
       const fieldValues = Object.fromEntries(
@@ -111,7 +111,6 @@ const buildServerUtils = <
         size: params.data.size,
         usageContext: params.data.usageContext,
         isPublic: params.data.isPublic,
-        scope: params.data.scope,
         fields: fieldValues,
         content: params.content,
       });

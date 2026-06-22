@@ -16,7 +16,7 @@ const fakeStorageAdapter = (): StorageAdapter => ({
 
 const fakeDatabaseAdapter = (): DatabaseAdapter<string, any> => ({
   createFiles: async () => {},
-  findFilesByBatchIdAndScope: async () => [],
+  findFilesByBatchId: async () => [],
   findFilesToCleanUp: async () => [],
   updateFilesToStored: async () => ({ updatedCount: 0 }),
   updateFile: async ({ file }) => file as DatabaseFile<string, any>,
@@ -32,7 +32,7 @@ describe("UploadStuff reserved field names (#1)", () => {
         filePublicUrlGenerator: ({ key }) => key,
         // `as any` bypasses the type-level guard to exercise the runtime guard,
         // standing in for a plain-JS caller.
-        fields: { scope: { type: "string" } } as any,
+        fields: { stored: { type: "string" } } as any,
       }),
     ).toThrow(/reserved/);
   });
@@ -50,7 +50,7 @@ describe("UploadStuff reserved field names (#1)", () => {
 });
 
 describe("serverUtils.uploadFile forwards row data to the storage adapter (#6)", () => {
-  it("passes scope and the declared field values so the adapter can resolve object metadata", async () => {
+  it("passes the declared field values so the adapter can resolve object metadata", async () => {
     const uploads: Array<StorageObjectInfo> = [];
     const storageAdapter: StorageAdapter = {
       ...fakeStorageAdapter(),
@@ -77,7 +77,6 @@ describe("serverUtils.uploadFile forwards row data to the storage adapter (#6)",
         size: 10,
         usageContext: "avatar",
         isPublic: false,
-        scope: "owner-1",
         entityId: "e1",
         count: 5,
       },
@@ -85,7 +84,6 @@ describe("serverUtils.uploadFile forwards row data to the storage adapter (#6)",
     });
 
     expect(uploads).toHaveLength(1);
-    expect(uploads[0]!.scope).toBe("owner-1");
     expect(uploads[0]!.filename).toBe("a.png");
     // Only the declared custom fields are forwarded (filtered to the declaration);
     // the storage adapter resolves its own object metadata from these.

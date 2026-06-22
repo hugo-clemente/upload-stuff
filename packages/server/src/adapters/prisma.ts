@@ -53,14 +53,10 @@ export const prismaAdapter =
       });
     },
 
-    findFilesByBatchIdAndScope: async (params) => {
+    findFilesByBatchId: async (params) => {
       const files = await prisma.file.findMany({
         where: {
           batchId: params.batchId,
-          // `?? null` matters: Prisma drops a `field: undefined` clause
-          // entirely (matches all rows), whereas `field: null` matches
-          // IS NULL. Anonymous uploads must only match anonymous batches.
-          scope: params.scope ?? null,
         },
       });
 
@@ -83,14 +79,11 @@ export const prismaAdapter =
     },
 
     updateFilesToStored: async (params) => {
-      // `stored: false` in the where-clause makes this an atomic guard: a
-      // repeated or concurrent completion of the same batch updates 0 rows.
+      // `stored: false` makes this an atomic guard: a repeated or concurrent
+      // completion of the same batch updates 0 rows.
       const res = await prisma.file.updateMany({
         where: {
           batchId: params.batchId,
-          // See findFilesByBatchIdAndScope — `?? null` keeps the scope filter
-          // from silently vanishing for anonymous uploads.
-          scope: params.scope ?? null,
           stored: false,
         },
         data: {

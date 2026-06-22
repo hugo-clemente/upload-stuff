@@ -18,7 +18,6 @@ interface InitUploadHandler<TFileUsageContext extends string> {
     files: Array<InitUploadFileData>;
     config: RouteConfig<TFileUsageContext>;
     input: Json;
-    scope: string | undefined;
     fieldValues: Record<string, unknown>;
     middlewareData: ValidMiddlewareObject;
     endpoint: string;
@@ -26,7 +25,7 @@ interface InitUploadHandler<TFileUsageContext extends string> {
 }
 
 interface CompleteUploadHandler {
-  (params: { batchId: string; scope: string | undefined; endpoint: string }): Promise<
+  (params: { batchId: string; endpoint: string }): Promise<
     Omit<CompleteUploadResult, "serverData"> & {
       input: Json;
       middlewareData: ValidMiddlewareObject;
@@ -69,7 +68,6 @@ export const createCore = <TFileUsageContext extends string>(
     files,
     config,
     input,
-    scope,
     fieldValues,
     middlewareData,
     endpoint,
@@ -114,7 +112,6 @@ export const createCore = <TFileUsageContext extends string>(
             size: file.size,
             usageContext: config.usageContext,
             isPublic: config.isPublic,
-            scope,
             // Raw declared field values; the storage adapter resolves its own
             // object metadata from these (the core no longer pre-resolves it).
             fields: safeFieldValues,
@@ -146,7 +143,6 @@ export const createCore = <TFileUsageContext extends string>(
         usageContext: config.usageContext,
         isPublic: config.isPublic,
         stored: false,
-        scope,
         // Declared custom columns ride along structurally; the adapter passes
         // them through (the persisted schema must declare them). Already filtered
         // to declared keys, so this can't overwrite a library-owned column above.
@@ -169,37 +165,26 @@ export const createCore = <TFileUsageContext extends string>(
     };
   };
 
-  const completeUpload: CompleteUploadHandler = async ({ batchId, scope, endpoint }) => {
-    const files = await databaseAdapter.findFilesByBatchIdAndScope({
-      batchId,
-      scope,
-    });
+  const completeUpload: CompleteUploadHandler = async ({ batchId, endpoint }) => {
+    const files = await databaseAdapter.findFilesByBatchId({ batchId });
 
     if (files.length === 0) {
-      throw new UploadStuffError({
-        code: "BAD_REQUEST",
-        message: "No files found",
-      });
+      throw new UploadStuffError({ code: "BAD_REQUEST", message: "No files found" });
     }
 
     const uploadSessionDataParse = uploadSessionDataSchema.safeParse(files[0]!.uploadSessionData);
-
     if (!uploadSessionDataParse.success) {
       throw new UploadStuffError({
         code: "BAD_REQUEST",
         message: `Invalid upload session data : ${z.prettifyError(uploadSessionDataParse.error)}`,
       });
     }
-
     const uploadSessionData = uploadSessionDataParse.data;
 
-    // Guard against finalising a batch through a different endpoint than the
-    // one it was initialised on — otherwise the wrong route's onUploadComplete
-    // would run against these files.
     if (uploadSessionData.endpoint !== endpoint) {
       throw new UploadStuffError({
         code: "BAD_REQUEST",
-        message: `Batch ${batchId} does not belong to endpoint ${endpoint}`,
+        message: `Batch does not belong to endpoint ${endpoint}`,
       });
     }
 
@@ -209,7 +194,6 @@ export const createCore = <TFileUsageContext extends string>(
         expectedSize: file.size,
         expectedContentType: file.contentType,
       });
-
       if (!verification.exists || !verification.isValid) {
         throw new UploadStuffError({
           code: "BAD_REQUEST",
@@ -217,15 +201,10 @@ export const createCore = <TFileUsageContext extends string>(
         });
       }
     });
-
     await Promise.all(verificationPromises);
 
-    // `updateFilesToStored` only matches rows still `stored: false`, so a
-    // repeated or concurrent completion updates 0 rows. That signals the batch
-    // was already finalised and `onUploadComplete` must not run again.
     const { updatedCount } = await databaseAdapter.updateFilesToStored({
       batchId,
-      scope,
       storedAt: new Date(),
     });
 

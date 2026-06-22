@@ -18,14 +18,12 @@ const fakeDatabaseAdapter = (): DatabaseAdapter => {
     createFiles: async ({ files }) => {
       rows.push(...files);
     },
-    findFilesByBatchIdAndScope: async ({ batchId, scope }) =>
-      // `undefined` matches only scopeless (anonymous) files — never any scope.
-      rows.filter((r) => r.batchId === batchId && r.scope === scope),
+    findFilesByBatchId: async ({ batchId }) => rows.filter((r) => r.batchId === batchId),
     findFilesToCleanUp: async () => [],
-    updateFilesToStored: async ({ batchId, scope }) => {
+    updateFilesToStored: async ({ batchId }) => {
       let updatedCount = 0;
       rows = rows.map((r) => {
-        if (r.batchId === batchId && r.scope === scope && !r.stored) {
+        if (r.batchId === batchId && !r.stored) {
           updatedCount++;
           return { ...r, stored: true };
         }
@@ -61,10 +59,7 @@ const passthroughParser: AnyFileRoute["inputParser"] = {
   },
 };
 
-const makeRoute = (
-  onComplete: () => unknown,
-  scope: AnyFileRoute["scope"] = () => undefined,
-): AnyFileRoute => ({
+const makeRoute = (onComplete: () => unknown): AnyFileRoute => ({
   $types: {} as AnyFileRoute["$types"],
   routeConfig: {
     isPublic: false,
@@ -73,7 +68,6 @@ const makeRoute = (
     maxFileSize: "5MB",
   },
   inputParser: passthroughParser,
-  scope,
   middleware: () => ({}),
   fields: () => ({}),
   onUploadComplete: onComplete,
@@ -102,19 +96,6 @@ const setup = () => {
     handlers,
     getCompletions: () => ({ avatarsCompletions, docsCompletions }),
   };
-};
-
-/** Handlers for a single `avatars` route scoped by the given resolver. */
-const setupScoped = (scope: AnyFileRoute["scope"]) => {
-  const fileRouter = {
-    avatars: makeRoute(() => ({ route: "avatars" }), scope),
-  };
-  const uploadStuff = UploadStuff()({
-    storageAdapter: () => fakeStorageAdapter(),
-    databaseAdapter: () => fakeDatabaseAdapter(),
-    filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
-  });
-  return fileRouteHandlers({ fileRouter, uploadStuff });
 };
 
 const ctx = { userId: "user-1" };
@@ -256,43 +237,32 @@ describe("custom field persistence (#8 / #1)", () => {
       entityId: "e1",
       count: 3,
       // even if a resolver returns a reserved key, it must not clobber state
-      scope: "attacker",
       stored: true,
+      batchId: "attacker",
     }));
 
     await handlers.initUpload("avatars", initData, ctx);
 
-    expect(created[0]!.scope).toBeUndefined();
     expect(created[0]!.stored).toBe(false);
+    expect(created[0]!.batchId).not.toBe("attacker");
   });
 });
 
-describe("scope ownership guard", () => {
-  // oxlint-disable-next-line @typescript-eslint/no-explicit-any
-  const byUser: AnyFileRoute["scope"] = ({ ctx }) => (ctx as any).userId;
-
-  it("completes when the same scope is re-derived (AE1)", async () => {
-    const handlers = setupScoped(byUser);
+describe("capability-based completion", () => {
+  it("completes for any caller holding the batch handle", async () => {
+    const { handlers } = setup();
     const init = await handlers.initUpload("avatars", initData, { userId: "A" });
-
-    const res = await handlers.completeUpload("avatars", { batchId: init.batchId }, { userId: "A" });
+    // A different principal who holds the handle can complete — the handle is
+    // the guard, not identity.
+    const res = await handlers.completeUpload("avatars", { batchId: init.batchId }, { userId: "B" });
     expect(res.files).toHaveLength(1);
   });
 
-  it("rejects completion when a different scope is re-derived (AE2)", async () => {
-    const handlers = setupScoped(byUser);
-    const init = await handlers.initUpload("avatars", initData, { userId: "A" });
-
+  it("rejects completion with an unknown handle", async () => {
+    const { handlers } = setup();
+    await handlers.initUpload("avatars", initData, { userId: "A" });
     await expect(
-      handlers.completeUpload("avatars", { batchId: init.batchId }, { userId: "B" }),
+      handlers.completeUpload("avatars", { batchId: "not-a-real-handle" }, { userId: "A" }),
     ).rejects.toThrow(UploadStuffError);
-  });
-
-  it("completes an anonymous batch for any caller (AE3)", async () => {
-    const handlers = setupScoped(() => undefined);
-    const init = await handlers.initUpload("avatars", initData, {});
-
-    const res = await handlers.completeUpload("avatars", { batchId: init.batchId }, {});
-    expect(res.files).toHaveLength(1);
   });
 });

@@ -47,7 +47,6 @@ describe("UploadBuilder", () => {
     {
       _routeConfig: unknown;
       _input: { in: UnsetMarker; out: UnsetMarker };
-      _scope: UnsetMarker;
       _fields: UnsetMarker;
       _fieldsDeclaration: Record<never, never>;
       _middlewareData: { role: string };
@@ -63,17 +62,10 @@ describe("UploadBuilder", () => {
     expectTypeOf<CompleteFnParams["middlewareData"]>().toEqualTypeOf<{ role: string }>();
   });
 
-  it("exposes scope and fields, not the removed metadata", () => {
-    expectTypeOf<Builder>().toHaveProperty("scope");
+  it("exposes fields but not scope or metadata", () => {
     expectTypeOf<Builder>().toHaveProperty("fields");
+    expectTypeOf<Builder>().not.toHaveProperty("scope");
     expectTypeOf<Builder>().not.toHaveProperty("metadata");
-  });
-
-  it("scope resolver reads ctx only and returns a string or undefined", () => {
-    type ScopeFn = Parameters<Builder["scope"]>[0];
-    type ScopeParams = Parameters<ScopeFn>[0];
-    expectTypeOf<ScopeParams>().toEqualTypeOf<{ ctx: { userId?: string } }>();
-    expectTypeOf<ReturnType<ScopeFn>>().toEqualTypeOf<string | undefined | Promise<string | undefined>>();
   });
 });
 
@@ -83,7 +75,6 @@ describe("build requires .fields() when a required field is declared (#3)", () =
   type ParamsWith<TFields, TFieldsDeclaration> = {
     _routeConfig: unknown;
     _input: { in: UnsetMarker; out: UnsetMarker };
-    _scope: UnsetMarker;
     _fields: TFields;
     _fieldsDeclaration: TFieldsDeclaration;
     _middlewareData: UnsetMarker;

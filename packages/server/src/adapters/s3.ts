@@ -57,7 +57,7 @@ export const s3Adapter =
   };
 
   // Resolve this adapter's object metadata from the raw row the core passes
-  // (scope + the declared field values). The core no longer pre-resolves it, so
+  // (the declared field values). The core no longer pre-resolves it, so
   // both the presigned and direct-upload paths run the same resolver here.
   const resolveMetadata = (info: StorageObjectInfo): Record<string, string> =>
     params.objectMetadata?.({
@@ -67,7 +67,6 @@ export const s3Adapter =
       contentType: info.contentType,
       usageContext: info.usageContext as TFileUsageContext,
       isPublic: info.isPublic,
-      scope: info.scope,
       ...(info.fields as InferFieldValues<TFields>),
     } as ObjectMetadataInput<TFileUsageContext, TFields>) ?? {};
 

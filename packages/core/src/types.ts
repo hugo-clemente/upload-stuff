@@ -54,8 +54,8 @@ export type InferFieldValues<TFields extends FieldsDeclaration> =
  * Library-owned columns present on every persisted file row. A custom field may
  * not reuse one of these names: at insert time the resolved field values are
  * spread alongside these columns, so a collision would let a `.fields()` value
- * overwrite the library's own state (the `scope` ownership token, the `stored`
- * completion flag, the `batchId` grouping, …) and corrupt the upload lifecycle.
+ * overwrite the library's own state (the `stored` completion flag, the `batchId`
+ * grouping, …) and corrupt the upload lifecycle.
  */
 export const RESERVED_FIELD_NAMES = [
   "id",
@@ -71,7 +71,6 @@ export const RESERVED_FIELD_NAMES = [
   "storedAt",
   "createdAt",
   "batchId",
-  "scope",
 ] as const;
 
 export type ReservedFieldName = (typeof RESERVED_FIELD_NAMES)[number];
@@ -104,13 +103,8 @@ export type DatabaseFile<
   stored: boolean;
   storedAt?: Date;
   batchId?: string;
-  /**
-   * Opaque ownership token, owned by the library but never interpreted by it.
-   * Scopes batch completion: only a request that re-derives the same value can
-   * finalize a batch. `undefined` denotes an anonymous batch. Derive it from the
-   * live `ctx` only — see `.scope()`.
-   */
-  scope?: string;
+  /** Set by the store on insert (DB default); present on reads, absent on writes. */
+  createdAt?: Date;
 } & InferFieldValues<TFields>;
 
 export type DatabaseAdapter<
@@ -119,14 +113,8 @@ export type DatabaseAdapter<
 > = {
   createFiles: (params: { files: DatabaseFile<TFileUsageContext, TFields>[] }) => Promise<void>;
 
-  findFilesByBatchIdAndScope: (params: {
+  findFilesByBatchId: (params: {
     batchId: string;
-    /**
-     * Scope filter. A defined value matches only that scope's files; an
-     * `undefined` value matches only files with no scope (anonymous uploads).
-     * Adapters MUST NOT treat `undefined` as "match any scope".
-     */
-    scope?: string;
   }) => Promise<DatabaseFile<TFileUsageContext, TFields>[]>;
 
   findFilesToCleanUp: (params: {
@@ -135,11 +123,6 @@ export type DatabaseAdapter<
 
   updateFilesToStored: (params: {
     batchId: string;
-    /**
-     * Scope filter — same semantics as findFilesByBatchIdAndScope:
-     * `undefined` matches only anonymous (scopeless) files, never any scope.
-     */
-    scope?: string;
     storedAt: Date;
   }) => Promise<{ updatedCount: number }>;
 
@@ -155,10 +138,7 @@ export type DatabaseAdapter<
 
 export type FileUploadContent = string | Uint8Array;
 
-/**
- * The row data passed to an `objectMetadata` resolver: the opaque `scope`, the
- * base file columns, and the typed declared custom fields.
- */
+/** The row data passed to an `objectMetadata` resolver: the base file columns and the typed declared custom fields. */
 export type ObjectMetadataInput<
   TFileUsageContext extends string,
   TFields extends FieldsDeclaration,
@@ -169,7 +149,6 @@ export type ObjectMetadataInput<
   contentType: string;
   usageContext: TFileUsageContext;
   isPublic: boolean;
-  scope?: string;
 } & InferFieldValues<TFields>;
 
 /** Maps a stored file's row onto an object-metadata key/value map. */
@@ -179,10 +158,9 @@ export type ObjectMetadataResolver<
 > = (file: ObjectMetadataInput<TFileUsageContext, TFields>) => Record<string, string>;
 
 /**
- * What a storage adapter needs to store an object: the raw row data, including
- * the opaque `scope` and the resolved custom `fields`. An adapter that supports
- * object metadata resolves it from this via its own `objectMetadata` option (the
- * core no longer pre-resolves it).
+ * What a storage adapter needs to store an object: the raw row data including
+ * the resolved custom `fields`. An adapter that supports object metadata resolves
+ * it from this via its own `objectMetadata` option (the core no longer pre-resolves it).
  */
 export type StorageObjectInfo = {
   key: string;
@@ -191,7 +169,6 @@ export type StorageObjectInfo = {
   size: number;
   usageContext: string;
   isPublic: boolean;
-  scope?: string;
   /** Resolved custom-field values, already filtered to the declared keys. */
   fields: Record<string, unknown>;
 };
