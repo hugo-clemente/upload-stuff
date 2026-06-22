@@ -49,6 +49,24 @@ describe("UploadStuff reserved field names (#1)", () => {
   });
 });
 
+describe("uploadWindowSeconds validation", () => {
+  const base = {
+    storageAdapter: () => fakeStorageAdapter(),
+    databaseAdapter: () => fakeDatabaseAdapter(),
+    filePublicUrlGenerator: ({ key }: { key: string }) => key,
+  };
+  it("accepts the boundaries 1 and 604800 and the default", () => {
+    expect(() => UploadStuff()({ ...base })).not.toThrow();
+    expect(() => UploadStuff()({ ...base, uploadWindowSeconds: 1 })).not.toThrow();
+    expect(() => UploadStuff()({ ...base, uploadWindowSeconds: 604800 })).not.toThrow();
+  });
+  it("rejects 0, negative, non-integer, NaN, and >604800", () => {
+    for (const bad of [0, -1, 1.5, Number.NaN, 604801]) {
+      expect(() => UploadStuff()({ ...base, uploadWindowSeconds: bad })).toThrow(/uploadWindowSeconds/);
+    }
+  });
+});
+
 describe("serverUtils.uploadFile forwards row data to the storage adapter (#6)", () => {
   it("passes the declared field values so the adapter can resolve object metadata", async () => {
     const uploads: Array<StorageObjectInfo> = [];

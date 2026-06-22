@@ -58,6 +58,7 @@ export const createCore = <TFileUsageContext extends string>(
     fileIdGenerator,
     filePublicUrlGenerator,
     fields,
+    uploadWindowSeconds,
   } = config;
 
   // The fields declaration is the authoritative persisted shape. Filter every
@@ -120,6 +121,7 @@ export const createCore = <TFileUsageContext extends string>(
             // Raw declared field values; the storage adapter resolves its own
             // object metadata from these (the core no longer pre-resolves it).
             fields: safeFieldValues,
+            expiresInSeconds: uploadWindowSeconds,
           }),
         ]);
 
@@ -187,11 +189,42 @@ export const createCore = <TFileUsageContext extends string>(
     }
     const uploadSessionData = uploadSessionDataParse.data;
 
+    // Prevents finalising a batch through a different endpoint than it was
+    // initialised on — otherwise the wrong route's onUploadComplete would run.
     if (uploadSessionData.endpoint !== endpoint) {
       throw new UploadStuffError({
         code: "BAD_REQUEST",
         message: `Batch does not belong to endpoint ${endpoint}`,
       });
+    }
+
+    const mappedFiles = files.map((file) => ({
+      id: file.id,
+      key: file.key,
+      publicUrl: file.publicUrl,
+      contentType: file.contentType,
+      size: file.size,
+      filename: file.filename,
+    }));
+
+    // Already finalised: return the idempotent result BEFORE the window check, so
+    // a retry of a completed upload still succeeds even past the window.
+    if (files.every((file) => file.stored)) {
+      return {
+        files: mappedFiles,
+        input: uploadSessionData.input,
+        middlewareData: uploadSessionData.middlewareData as ValidMiddlewareObject,
+        alreadyCompleted: true,
+      };
+    }
+
+    // Reject a stale pending batch. Use the earliest row createdAt so the result
+    // never depends on adapter row ordering.
+    const createdAtMs = files
+      .map((file) => file.createdAt?.getTime())
+      .filter((ms): ms is number => typeof ms === "number");
+    if (createdAtMs.length > 0 && Date.now() - Math.min(...createdAtMs) > uploadWindowSeconds * 1000) {
+      throw new UploadStuffError({ code: "BAD_REQUEST", message: "Upload window expired" });
     }
 
     const verificationPromises = files.map(async (file) => {
@@ -209,20 +242,15 @@ export const createCore = <TFileUsageContext extends string>(
     });
     await Promise.all(verificationPromises);
 
+    // The `stored: false` match makes a repeated/concurrent completion update 0 rows,
+    // signalling an already-finalised batch.
     const { updatedCount } = await databaseAdapter.updateFilesToStored({
       batchId,
       storedAt: new Date(),
     });
 
     return {
-      files: files.map((file) => ({
-        id: file.id,
-        key: file.key,
-        publicUrl: file.publicUrl,
-        contentType: file.contentType,
-        size: file.size,
-        filename: file.filename,
-      })),
+      files: mappedFiles,
       input: uploadSessionData.input,
       middlewareData: uploadSessionData.middlewareData as ValidMiddlewareObject,
       alreadyCompleted: updatedCount === 0,

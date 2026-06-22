@@ -1,5 +1,4 @@
 import { createId } from "@paralleldrive/cuid2";
-import { subHours } from "date-fns";
 
 import { RESERVED_FIELD_NAMES } from "@upload-stuff/core";
 import type {
@@ -16,6 +15,16 @@ import type {
   UploadStuffConfig,
   ValidateFieldsDeclaration,
 } from "@upload-stuff/core";
+
+const resolveUploadWindowSeconds = (value: number | undefined): number => {
+  const seconds = value ?? 3600;
+  if (!Number.isInteger(seconds) || seconds < 1 || seconds > 604800) {
+    throw new Error(
+      `upload-stuff: uploadWindowSeconds must be an integer between 1 and 604800 (got ${value}).`,
+    );
+  }
+  return seconds;
+};
 
 const defaultFileIdGenerator = createId;
 const defaultFileKeyGenerator = (params: {
@@ -46,7 +55,7 @@ const buildServerUtils = <
   return {
     cleanUpFiles: async () => {
       const files = await config.databaseAdapter.findFilesToCleanUp({
-        createdAtThreshold: subHours(new Date(), 24),
+        createdAtThreshold: new Date(Date.now() - config.uploadWindowSeconds * 1000),
       });
 
       await deleteFiles(files.map((file) => file.id));
@@ -146,6 +155,7 @@ export type UploadStuff<
   __filePublicUrlGenerator: FilePublicUrlGenerator;
   /** The declared custom-field declaration, used to filter persisted values. */
   __fields: TFields | undefined;
+  __uploadWindowSeconds: number;
 };
 
 /**
@@ -189,7 +199,10 @@ export const UploadStuff =
       fileKeyGenerator = defaultFileKeyGenerator,
       filePublicUrlGenerator,
       fields,
+      uploadWindowSeconds,
     } = config;
+
+    const resolvedUploadWindowSeconds = resolveUploadWindowSeconds(uploadWindowSeconds);
 
     // Belt-and-suspenders to the type-level guard above: reject reserved field
     // names at runtime too, so a JS caller (or a cast) can't slip a custom field
@@ -229,6 +242,7 @@ export const UploadStuff =
         fileKeyGenerator,
         filePublicUrlGenerator,
         fields,
+        uploadWindowSeconds: resolvedUploadWindowSeconds,
       }),
 
       __storageAdapter: storageAdapter,
@@ -238,5 +252,6 @@ export const UploadStuff =
       __fileKeyGenerator: fileKeyGenerator,
       __filePublicUrlGenerator: filePublicUrlGenerator,
       __fields: fields,
+      __uploadWindowSeconds: resolvedUploadWindowSeconds,
     };
   };

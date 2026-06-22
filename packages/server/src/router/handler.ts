@@ -52,6 +52,7 @@ export const fileRouteHandlers = ({
     fileKeyGenerator: uploadStuff.__fileKeyGenerator,
     filePublicUrlGenerator: uploadStuff.__filePublicUrlGenerator,
     fields: uploadStuff.__fields,
+    uploadWindowSeconds: uploadStuff.__uploadWindowSeconds,
   });
 
   const getRoute = (endpoint: string) => {

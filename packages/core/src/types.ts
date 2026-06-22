@@ -174,7 +174,7 @@ export type StorageObjectInfo = {
 };
 
 export type StorageAdapter = {
-  generatePresignedUpload: (params: StorageObjectInfo) => Promise<{
+  generatePresignedUpload: (params: StorageObjectInfo & { expiresInSeconds: number }) => Promise<{
     uploadUrl: string;
     /**
      * Headers the client MUST send on the PUT for the request to match the
@@ -269,6 +269,8 @@ export type UploadStuffConfig<
   filePublicUrlGenerator: FilePublicUrlGenerator;
   /** Central declaration of the custom columns this instance persists. */
   fields?: TFields;
+  /** Window (seconds) for presign expiry, completion deadline, and cleanup. */
+  uploadWindowSeconds: number;
 };
 
 /**
@@ -288,4 +290,7 @@ export type CreateUploadStuffConfig<
   filePublicUrlGenerator: FilePublicUrlGenerator;
   /** Central declaration of the custom columns this instance persists. */
   fields?: TFields;
+  /** Window in seconds (default 3600, 1..604800) for presign expiry, completion
+   * deadline, and abandoned-row cleanup. */
+  uploadWindowSeconds?: number;
 };

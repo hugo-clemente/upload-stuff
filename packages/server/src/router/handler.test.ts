@@ -12,11 +12,11 @@ import { UploadStuff } from "../upload-stuff";
 import { fileRouteHandlers } from "./handler";
 
 /** In-memory database adapter for tests. */
-const fakeDatabaseAdapter = (): DatabaseAdapter => {
+const fakeDatabaseAdapter = (opts: { createdAt?: Date } = {}): DatabaseAdapter => {
   let rows: DatabaseFile<string>[] = [];
   return {
     createFiles: async ({ files }) => {
-      rows.push(...files);
+      rows.push(...files.map((f) => ({ ...f, createdAt: f.createdAt ?? opts.createdAt ?? new Date() })));
     },
     findFilesByBatchId: async ({ batchId }) => rows.filter((r) => r.batchId === batchId),
     findFilesToCleanUp: async () => [],
@@ -295,5 +295,54 @@ describe("token hashing", () => {
     // completing with the raw token (which the handler hashes) succeeds
     const res = await handlers.completeUpload("avatars", { batchToken: init.batchToken }, ctx);
     expect(res.files).toHaveLength(1);
+  });
+});
+
+describe("upload window", () => {
+  const makeHandlers = (createdAt?: Date) => {
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => fakeStorageAdapter(),
+      databaseAdapter: () => fakeDatabaseAdapter({ createdAt }),
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+      uploadWindowSeconds: 3600,
+    });
+    return fileRouteHandlers({ fileRouter: { avatars: makeRoute(() => ({})) }, uploadStuff });
+  };
+
+  it("completes within the window", async () => {
+    const handlers = makeHandlers(new Date());
+    const init = await handlers.initUpload("avatars", initData, ctx);
+    const res = await handlers.completeUpload("avatars", { batchToken: init.batchToken }, ctx);
+    expect(res.files).toHaveLength(1);
+  });
+
+  it("rejects completion past the window", async () => {
+    const handlers = makeHandlers(new Date(Date.now() - 7200_000)); // 2h ago, window 1h
+    const init = await handlers.initUpload("avatars", initData, ctx);
+    await expect(
+      handlers.completeUpload("avatars", { batchToken: init.batchToken }, ctx),
+    ).rejects.toThrow(/window expired/i);
+  });
+
+  it("still returns idempotent success when retried past the window", async () => {
+    // first completion happens in-window; backdate happens conceptually after.
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => fakeStorageAdapter(),
+      databaseAdapter: () => fakeDatabaseAdapter({ createdAt: new Date() }),
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+      uploadWindowSeconds: 3600,
+    });
+    let completions = 0;
+    const handlers = fileRouteHandlers({
+      fileRouter: { avatars: makeRoute(() => { completions++; return {}; }) },
+      uploadStuff,
+    });
+    const init = await handlers.initUpload("avatars", initData, ctx);
+    await handlers.completeUpload("avatars", { batchToken: init.batchToken }, ctx); // stored=true
+    // a second completion: rows are all stored, so it short-circuits before the
+    // window check and returns success without re-running onUploadComplete.
+    const res = await handlers.completeUpload("avatars", { batchToken: init.batchToken }, ctx);
+    expect(res.files).toHaveLength(1);
+    expect(completions).toBe(1);
   });
 });

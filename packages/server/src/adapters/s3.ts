@@ -98,7 +98,7 @@ export const s3Adapter =
       const requiredHeaders = metadataHeaders(metadata);
 
       const uploadUrl = await getSignedUrl(s3Client, command, {
-        expiresIn: 3600, // 1 hour
+        expiresIn: info.expiresInSeconds,
         // Keep x-amz-meta-* as SIGNED HEADERS (not hoisted into the query string):
         // the client replays them via requiredHeaders, and hoisted+replayed would be
         // an unsigned-header signature mismatch. Also keeps metadata out of the URL.
