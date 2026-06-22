@@ -324,25 +324,51 @@ describe("upload window", () => {
     ).rejects.toThrow(/window expired/i);
   });
 
-  it("still returns idempotent success when retried past the window", async () => {
-    // first completion happens in-window; backdate happens conceptually after.
+  it("returns idempotent success for an already-completed batch even past the window", async () => {
+    const { createHash } = await import("node:crypto");
+    const batchToken = "already-done-token";
+    const batchId = createHash("sha256").update(batchToken).digest("hex");
+
+    // A batch finalised long ago: rows stored=true, createdAt well past a 1s window.
+    const storedRow: DatabaseFile<string> = {
+      id: "f1",
+      key: "k1",
+      filename: "a.png",
+      size: 1024,
+      publicUrl: "https://cdn.test/k1",
+      contentType: "image/png",
+      usageContext: "avatars",
+      isPublic: false,
+      stored: true,
+      storedAt: new Date(Date.now() - 5000),
+      batchId,
+      createdAt: new Date(Date.now() - 5000),
+      uploadSessionData: { input: null, middlewareData: {}, endpoint: "avatars" },
+    };
+
+    let completions = 0;
+    const databaseAdapter: DatabaseAdapter = {
+      ...fakeDatabaseAdapter(),
+      findFilesByBatchId: async ({ batchId: id }) => (id === batchId ? [storedRow] : []),
+      updateFilesToStored: async () => ({ updatedCount: 0 }),
+    };
     const uploadStuff = UploadStuff()({
       storageAdapter: () => fakeStorageAdapter(),
-      databaseAdapter: () => fakeDatabaseAdapter({ createdAt: new Date() }),
+      databaseAdapter: () => databaseAdapter,
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
-      uploadWindowSeconds: 3600,
+      uploadWindowSeconds: 1, // 1s window; the row is 5s old → window is expired
     });
-    let completions = 0;
     const handlers = fileRouteHandlers({
       fileRouter: { avatars: makeRoute(() => { completions++; return {}; }) },
       uploadStuff,
     });
-    const init = await handlers.initUpload("avatars", initData, ctx);
-    await handlers.completeUpload("avatars", { batchToken: init.batchToken }, ctx); // stored=true
-    // a second completion: rows are all stored, so it short-circuits before the
-    // window check and returns success without re-running onUploadComplete.
-    const res = await handlers.completeUpload("avatars", { batchToken: init.batchToken }, ctx);
+
+    // Past the window, but already stored → the short-circuit returns success
+    // BEFORE the window check, so it must not throw "Upload window expired" and
+    // must not re-run onUploadComplete. If the ordering were reversed, the
+    // expired-window check would throw here.
+    const res = await handlers.completeUpload("avatars", { batchToken }, ctx);
     expect(res.files).toHaveLength(1);
-    expect(completions).toBe(1);
+    expect(completions).toBe(0);
   });
 });
