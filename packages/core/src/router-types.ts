@@ -77,7 +77,6 @@ type UploadCompleteFn<
 > = (params: {
   files: UploadedFileData[];
   input: TInput;
-  ctx: TContext;
   middlewareData: TMiddlewareData;
 }) => TOutput | Promise<TOutput>;
 

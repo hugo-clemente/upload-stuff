@@ -164,6 +164,27 @@ describe("fileRouteHandlers", () => {
       UploadStuffError,
     );
   });
+
+  it("does not pass live ctx to onUploadComplete", async () => {
+    let receivedKeys: string[] = [];
+    const route: AnyFileRoute = {
+      ...makeRoute(() => ({})),
+      onUploadComplete: (args) => {
+        receivedKeys = Object.keys(args);
+        return {};
+      },
+    };
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => fakeStorageAdapter(),
+      databaseAdapter: () => fakeDatabaseAdapter(),
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+    });
+    const handlers = fileRouteHandlers({ fileRouter: { avatars: route }, uploadStuff });
+    const init = await handlers.initUpload("avatars", initData, ctx);
+    await handlers.completeUpload("avatars", { batchId: init.batchId }, ctx);
+    expect(receivedKeys).not.toContain("ctx");
+    expect(receivedKeys.sort()).toEqual(["files", "input", "middlewareData"]);
+  });
 });
 
 describe("presigned upload headers (#5)", () => {

@@ -132,7 +132,6 @@ export const fileRouteHandlers = ({
         ? undefined
         : await route.onUploadComplete({
             files,
-            ctx,
             input,
             middlewareData,
           });
