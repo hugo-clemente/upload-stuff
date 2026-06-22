@@ -17,10 +17,10 @@ export const fileRouter = {
     maxFileCount: 1,
   })
     .input(z.object({ caption: z.string() }))
-    // Ownership: only the same user can finalize their own in-flight batch.
-    .scope(({ ctx }) => ctx.userId)
-    // Persist the declared `caption` column from the validated input.
-    .fields(({ input }) => ({ caption: input.caption }))
+    // Persist the declared columns from the validated input and the ctx-derived
+    // user id. userId is plain metadata (the gallery filters by it); it carries no
+    // auth weight — completion is guarded by the batch token.
+    .fields(({ input, ctx }) => ({ caption: input.caption, userId: ctx.userId }))
     .middleware(({ ctx }) => ({ userId: ctx.userId }))
     .onUploadComplete(({ files, middlewareData }) => ({
       owner: middlewareData.userId,

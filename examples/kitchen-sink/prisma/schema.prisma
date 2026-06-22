@@ -20,7 +20,7 @@ model File {
   stored            Boolean   @default(false)
   storedAt          DateTime?
   batchId           String?
-  scope             String?
+  userId            String
   caption           String?
   createdAt         DateTime  @default(now())
 }

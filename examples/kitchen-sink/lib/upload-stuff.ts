@@ -11,25 +11,24 @@ const BUCKET = "uploads";
 
 // Adapters are supplied as factories, so their types are inferred from this config —
 // no explicit generics anywhere. `fields` is the single source of truth, and the
-// s3 adapter's `objectMetadata` is typed against it by inference (file.caption /
-// file.scope are typed with no annotation).
+// s3 adapter's `objectMetadata` is typed against it by inference (file.userId /
+// file.caption are typed with no annotation).
 export const uploadStuff = UploadStuff<"image">()({
   storageAdapter: s3Adapter({
     config: {
       region: "us-east-1",
       endpoint: MINIO_ENDPOINT,
       forcePathStyle: true,
-      credentials: {
-        accessKeyId: "minioadmin",
-        secretAccessKey: "minioadmin",
-      },
+      credentials: { accessKeyId: "minioadmin", secretAccessKey: "minioadmin" },
     },
     bucket: BUCKET,
-    objectMetadata: (file) => ({ owner: file.scope ?? "", caption: file.caption ?? "" }),
+    objectMetadata: (file) => ({ owner: file.userId, caption: file.caption ?? "" }),
   }),
   databaseAdapter: prismaAdapter({ prisma }),
   filePublicUrlGenerator: ({ key }) => `${MINIO_ENDPOINT}/${BUCKET}/${key}`,
+  uploadWindowSeconds: 3600,
   fields: {
     caption: { type: "string", required: false },
+    userId: { type: "string", required: true },
   },
 });

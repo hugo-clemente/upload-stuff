@@ -110,7 +110,7 @@ export const fileRouteHandlers = ({
       return result;
     },
 
-    completeUpload: async (endpoint, { batchToken }, ctx) => {
+    completeUpload: async (endpoint, { batchToken }, _ctx) => {
       const route = getRoute(endpoint);
 
       const { files, input, middlewareData, alreadyCompleted } = await core.completeUpload({

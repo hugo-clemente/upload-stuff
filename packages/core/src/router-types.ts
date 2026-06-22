@@ -57,7 +57,7 @@ type FieldsFn<
 }) => InferFieldValues<TFields> | Promise<InferFieldValues<TFields>>;
 
 type UploadCompleteFn<
-  TContext extends ValidContextObject,
+  _TContext extends ValidContextObject,
   TInput extends Json | UnsetMarker,
   TMiddlewareData extends ValidMiddlewareObject | UnsetMarker,
   TOutput extends Json | void,
