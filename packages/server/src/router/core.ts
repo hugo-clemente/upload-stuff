@@ -1,4 +1,4 @@
-import { createId } from "@paralleldrive/cuid2";
+import { randomBytes, createHash } from "node:crypto";
 import { z } from "zod";
 
 import {
@@ -24,8 +24,12 @@ interface InitUploadHandler<TFileUsageContext extends string> {
   }): Promise<InitUploadResult>;
 }
 
+const createBatchToken = () => randomBytes(32).toString("base64url");
+const hashBatchToken = (token: string) =>
+  createHash("sha256").update(token).digest("hex");
+
 interface CompleteUploadHandler {
-  (params: { batchId: string; endpoint: string }): Promise<
+  (params: { batchToken: string; endpoint: string }): Promise<
     Omit<CompleteUploadResult, "serverData"> & {
       input: Json;
       middlewareData: ValidMiddlewareObject;
@@ -86,7 +90,8 @@ export const createCore = <TFileUsageContext extends string>(
 
     validateFiles(files, config);
 
-    const batchId = createId();
+    const batchToken = createBatchToken();
+    const batchId = hashBatchToken(batchToken);
 
     const safeFieldValues = pickDeclaredFields(fieldValues);
 
@@ -161,11 +166,12 @@ export const createCore = <TFileUsageContext extends string>(
         uploadUrl,
         uploadHeaders,
       })),
-      batchId,
+      batchToken,
     };
   };
 
-  const completeUpload: CompleteUploadHandler = async ({ batchId, endpoint }) => {
+  const completeUpload: CompleteUploadHandler = async ({ batchToken, endpoint }) => {
+    const batchId = hashBatchToken(batchToken);
     const files = await databaseAdapter.findFilesByBatchId({ batchId });
 
     if (files.length === 0) {

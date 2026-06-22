@@ -232,7 +232,7 @@ export type UploadStuffRouterWithContext<
 >;
 
 export type InitUploadResult = {
-  batchId: string;
+  batchToken: string;
   files: Array<ToUploadFileData>;
 };
 

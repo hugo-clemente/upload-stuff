@@ -19,7 +19,7 @@ export type InitUploadHandlerData = {
 };
 
 export type CompleteUploadHandlerData = {
-  batchId: string;
+  batchToken: string;
 };
 
 export type RouteHandlers = {
@@ -109,11 +109,11 @@ export const fileRouteHandlers = ({
       return result;
     },
 
-    completeUpload: async (endpoint, { batchId }, ctx) => {
+    completeUpload: async (endpoint, { batchToken }, ctx) => {
       const route = getRoute(endpoint);
 
       const { files, input, middlewareData, alreadyCompleted } = await core.completeUpload({
-        batchId,
+        batchToken,
         endpoint,
       });
 

@@ -254,7 +254,7 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
                 endpoint: resolvedEndpoint as string,
               },
               json: {
-                batchId: uploadPlan.batchId,
+                batchToken: uploadPlan.batchToken,
               },
             },
             { headers: requestHeaders },

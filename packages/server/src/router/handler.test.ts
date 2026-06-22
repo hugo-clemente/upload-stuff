@@ -115,7 +115,7 @@ describe("fileRouteHandlers", () => {
     const init = await handlers.initUpload("avatars", initData, ctx);
     expect(init.files).toHaveLength(1);
 
-    await handlers.completeUpload("avatars", { batchId: init.batchId }, ctx);
+    await handlers.completeUpload("avatars", { batchToken: init.batchToken }, ctx);
     expect(getCompletions().avatarsCompletions).toBe(1);
   });
 
@@ -123,7 +123,7 @@ describe("fileRouteHandlers", () => {
     const { handlers, getCompletions } = setup();
     const init = await handlers.initUpload("avatars", initData, ctx);
 
-    await expect(handlers.completeUpload("docs", { batchId: init.batchId }, ctx)).rejects.toThrow(
+    await expect(handlers.completeUpload("docs", { batchToken: init.batchToken }, ctx)).rejects.toThrow(
       UploadStuffError,
     );
     expect(getCompletions().docsCompletions).toBe(0);
@@ -133,15 +133,15 @@ describe("fileRouteHandlers", () => {
     const { handlers, getCompletions } = setup();
     const init = await handlers.initUpload("avatars", initData, ctx);
 
-    await handlers.completeUpload("avatars", { batchId: init.batchId }, ctx);
-    await handlers.completeUpload("avatars", { batchId: init.batchId }, ctx);
+    await handlers.completeUpload("avatars", { batchToken: init.batchToken }, ctx);
+    await handlers.completeUpload("avatars", { batchToken: init.batchToken }, ctx);
 
     expect(getCompletions().avatarsCompletions).toBe(1);
   });
 
   it("throws when no files exist for a batch", async () => {
     const { handlers } = setup();
-    await expect(handlers.completeUpload("avatars", { batchId: "missing" }, ctx)).rejects.toThrow(
+    await expect(handlers.completeUpload("avatars", { batchToken: "missing" }, ctx)).rejects.toThrow(
       UploadStuffError,
     );
   });
@@ -162,7 +162,7 @@ describe("fileRouteHandlers", () => {
     });
     const handlers = fileRouteHandlers({ fileRouter: { avatars: route }, uploadStuff });
     const init = await handlers.initUpload("avatars", initData, ctx);
-    await handlers.completeUpload("avatars", { batchId: init.batchId }, ctx);
+    await handlers.completeUpload("avatars", { batchToken: init.batchToken }, ctx);
     expect(receivedKeys).not.toContain("ctx");
     expect(receivedKeys.sort()).toEqual(["files", "input", "middlewareData"]);
   });
@@ -254,7 +254,7 @@ describe("capability-based completion", () => {
     const init = await handlers.initUpload("avatars", initData, { userId: "A" });
     // A different principal who holds the handle can complete — the handle is
     // the guard, not identity.
-    const res = await handlers.completeUpload("avatars", { batchId: init.batchId }, { userId: "B" });
+    const res = await handlers.completeUpload("avatars", { batchToken: init.batchToken }, { userId: "B" });
     expect(res.files).toHaveLength(1);
   });
 
@@ -262,7 +262,38 @@ describe("capability-based completion", () => {
     const { handlers } = setup();
     await handlers.initUpload("avatars", initData, { userId: "A" });
     await expect(
-      handlers.completeUpload("avatars", { batchId: "not-a-real-handle" }, { userId: "A" }),
+      handlers.completeUpload("avatars", { batchToken: "not-a-real-handle" }, { userId: "A" }),
     ).rejects.toThrow(UploadStuffError);
+  });
+});
+
+describe("token hashing", () => {
+  it("stores sha256(batchToken) as the row batchId, never the raw token", async () => {
+    const created: DatabaseFile<string>[] = [];
+    const databaseAdapter: DatabaseAdapter = {
+      ...fakeDatabaseAdapter(),
+      createFiles: async ({ files }) => {
+        created.push(...files);
+      },
+      // make completion find the stored (hashed) rows
+      findFilesByBatchId: async ({ batchId }) => created.filter((r) => r.batchId === batchId),
+    };
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => fakeStorageAdapter(),
+      databaseAdapter: () => databaseAdapter,
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+    });
+    const handlers = fileRouteHandlers({ fileRouter: { avatars: makeRoute(() => ({})) }, uploadStuff });
+
+    const init = await handlers.initUpload("avatars", initData, ctx);
+    const { createHash } = await import("node:crypto");
+    const expectedHash = createHash("sha256").update(init.batchToken).digest("hex");
+
+    expect(created[0]!.batchId).toBe(expectedHash);
+    expect(created[0]!.batchId).not.toBe(init.batchToken);
+
+    // completing with the raw token (which the handler hashes) succeeds
+    const res = await handlers.completeUpload("avatars", { batchToken: init.batchToken }, ctx);
+    expect(res.files).toHaveLength(1);
   });
 });
