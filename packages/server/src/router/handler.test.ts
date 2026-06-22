@@ -324,6 +324,44 @@ describe("upload window", () => {
     ).rejects.toThrow(/window expired/i);
   });
 
+  it("uses the earliest row createdAt for the window (rejects when the oldest is expired)", async () => {
+    const { createHash } = await import("node:crypto");
+    const batchToken = "mixed-ts-token";
+    const batchId = createHash("sha256").update(batchToken).digest("hex");
+    const base = {
+      key: "k",
+      filename: "a.png",
+      size: 1024,
+      publicUrl: "https://cdn.test/k",
+      contentType: "image/png",
+      usageContext: "avatars",
+      isPublic: false,
+      stored: false,
+      batchId,
+      uploadSessionData: { input: null, middlewareData: {}, endpoint: "avatars" },
+    } as const;
+    const rows: DatabaseFile<string>[] = [
+      { ...base, id: "f-old", createdAt: new Date(Date.now() - 5000) }, // earliest → expired vs 1s window
+      { ...base, id: "f-new", createdAt: new Date() },
+    ];
+    const databaseAdapter: DatabaseAdapter = {
+      ...fakeDatabaseAdapter(),
+      findFilesByBatchId: async ({ batchId: id }) => (id === batchId ? rows : []),
+    };
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => fakeStorageAdapter(),
+      databaseAdapter: () => databaseAdapter,
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+      uploadWindowSeconds: 1,
+    });
+    const handlers = fileRouteHandlers({ fileRouter: { avatars: makeRoute(() => ({})) }, uploadStuff });
+    // min(createdAt) is the 5s-old row → expired against the 1s window → reject.
+    // If the code used the newest row (or files[0] happened to be the new one), this would not throw.
+    await expect(
+      handlers.completeUpload("avatars", { batchToken }, ctx),
+    ).rejects.toThrow(/window expired/i);
+  });
+
   it("returns idempotent success for an already-completed batch even past the window", async () => {
     const { createHash } = await import("node:crypto");
     const batchToken = "already-done-token";

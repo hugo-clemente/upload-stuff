@@ -67,6 +67,29 @@ describe("uploadWindowSeconds validation", () => {
   });
 });
 
+describe("serverUtils.cleanUpFiles threshold", () => {
+  it("uses uploadWindowSeconds as the createdAt threshold", async () => {
+    let threshold: Date | undefined;
+    const databaseAdapter: DatabaseAdapter<string, any> = {
+      ...fakeDatabaseAdapter(),
+      findFilesToCleanUp: async (p) => {
+        threshold = p.createdAtThreshold;
+        return [];
+      },
+    };
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => fakeStorageAdapter(),
+      databaseAdapter: () => databaseAdapter,
+      filePublicUrlGenerator: ({ key }) => key,
+      uploadWindowSeconds: 100,
+    });
+    const expected = Date.now() - 100 * 1000;
+    await uploadStuff.serverUtils.cleanUpFiles();
+    expect(threshold).toBeInstanceOf(Date);
+    expect(Math.abs(threshold!.getTime() - expected)).toBeLessThan(5000);
+  });
+});
+
 describe("serverUtils.uploadFile forwards row data to the storage adapter (#6)", () => {
   it("passes the declared field values so the adapter can resolve object metadata", async () => {
     const uploads: Array<StorageObjectInfo> = [];

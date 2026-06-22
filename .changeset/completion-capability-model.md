@@ -17,3 +17,4 @@ Capability-based completion replaces identity-based `.scope()`.
 - Custom `DatabaseAdapter`: rename `findFilesByBatchIdAndScope` → `findFilesByBatchId`, drop `scope` from `updateFilesToStored`, and expose `createdAt` on returned rows. The stored/queried `batchId` is the library-supplied `sha256(token)`.
 - Custom `StorageAdapter`: `generatePresignedUpload` receives `expiresInSeconds` and must sign to it; `scope` is gone from the object-metadata input.
 - Drop the `scope` column from your schema; add your own metadata column(s) if needed.
+- `serverUtils.cleanUpFiles` now reaps abandoned pending rows older than `uploadWindowSeconds` (default 1h) instead of a hardcoded 24h.

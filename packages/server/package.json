@@ -52,7 +52,6 @@
     "@hono/zod-validator": "^0.7.5",
     "@paralleldrive/cuid2": "^2.2.2",
     "@upload-stuff/core": "workspace:*",
-    "date-fns": "^4.1.0",
     "hono": "^4.10.7",
     "zod": "4.1.11"
   },
