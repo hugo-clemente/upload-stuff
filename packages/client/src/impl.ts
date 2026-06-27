@@ -24,6 +24,7 @@ import {
 } from "@upload-stuff/core";
 
 import { compressImage } from "./compress-images";
+import { mergeHeaders } from "./headers";
 
 /* oxlint-disable @typescript-eslint/no-explicit-any */
 
@@ -404,15 +405,6 @@ export const preprocessImages =
       }),
     );
   };
-
-const mergeHeaders = (...inits: Array<HeadersInit | undefined>): Record<string, string> => {
-  const out = new Headers();
-  for (const init of inits) {
-    if (!init) continue;
-    new Headers(init).forEach((value, key) => out.set(key, value));
-  }
-  return Object.fromEntries(out.entries());
-};
 
 const uploadFileWithProgress = async ({
   uploadUrl,
