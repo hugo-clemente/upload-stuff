@@ -1,4 +1,3 @@
-import { randomBytes, createHash } from "node:crypto";
 import { z } from "zod";
 
 import {
@@ -13,6 +12,8 @@ import {
   type ValidMiddlewareObject,
 } from "@upload-stuff/core";
 
+import { pickDeclaredFields } from "../fields";
+
 interface InitUploadHandler<TFileUsageContext extends string> {
   (params: {
     files: Array<InitUploadFileData>;
@@ -24,9 +25,27 @@ interface InitUploadHandler<TFileUsageContext extends string> {
   }): Promise<InitUploadResult>;
 }
 
-const createBatchToken = () => randomBytes(32).toString("base64url");
-const hashBatchToken = (token: string) =>
-  createHash("sha256").update(token).digest("hex");
+// Web Crypto (globalThis.crypto), not node:crypto, so @upload-stuff/server still
+// bundles/imports on fetch-compatible runtimes (Cloudflare Workers, Next Edge,
+// Deno, Bun) that have no Node built-ins. Available on Node >= 20 too.
+const toBase64Url = (bytes: Uint8Array): string => {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  // btoa is a runtime-neutral global; strip padding and make it URL-safe.
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+const toHex = (bytes: Uint8Array): string =>
+  Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+const createBatchToken = (): string => {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return toBase64Url(bytes);
+};
+const hashBatchToken = async (token: string): Promise<string> => {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return toHex(new Uint8Array(digest));
+};
 
 interface CompleteUploadHandler {
   (params: { batchToken: string; endpoint: string }): Promise<
@@ -61,14 +80,6 @@ export const createCore = <TFileUsageContext extends string>(
     uploadWindowSeconds,
   } = config;
 
-  // The fields declaration is the authoritative persisted shape. Filter every
-  // `.fields()` result down to declared keys before it reaches the row, so a
-  // stray/typo key from the resolver can't be forwarded as an unknown column,
-  // and a value can never collide with a library-owned column.
-  const declaredFieldNames = Object.keys(fields ?? {});
-  const pickDeclaredFields = (values: Record<string, unknown>): Record<string, unknown> =>
-    Object.fromEntries(Object.entries(values).filter(([key]) => declaredFieldNames.includes(key)));
-
   const initUpload: InitUploadHandler<TFileUsageContext> = async ({
     files,
     config,
@@ -92,9 +103,13 @@ export const createCore = <TFileUsageContext extends string>(
     validateFiles(files, config);
 
     const batchToken = createBatchToken();
-    const batchId = hashBatchToken(batchToken);
+    const batchId = await hashBatchToken(batchToken);
+    // Stamp the init time here, in the library, rather than relying on a DB
+    // default the adapter might not surface on reads. The completion window and
+    // cleanup both read this back, so the deadline never silently disappears.
+    const createdAt = new Date();
 
-    const safeFieldValues = pickDeclaredFields(fieldValues);
+    const safeFieldValues = pickDeclaredFields(fields, fieldValues);
 
     const preparedFiles = await Promise.all(
       files.map(async (file) => {
@@ -150,6 +165,7 @@ export const createCore = <TFileUsageContext extends string>(
         usageContext: config.usageContext,
         isPublic: config.isPublic,
         stored: false,
+        createdAt,
         // Declared custom columns ride along structurally; the adapter passes
         // them through (the persisted schema must declare them). Already filtered
         // to declared keys, so this can't overwrite a library-owned column above.
@@ -173,7 +189,7 @@ export const createCore = <TFileUsageContext extends string>(
   };
 
   const completeUpload: CompleteUploadHandler = async ({ batchToken, endpoint }) => {
-    const batchId = hashBatchToken(batchToken);
+    const batchId = await hashBatchToken(batchToken);
     const files = await databaseAdapter.findFilesByBatchId({ batchId });
 
     if (files.length === 0) {
@@ -219,11 +235,18 @@ export const createCore = <TFileUsageContext extends string>(
     }
 
     // Reject a stale pending batch. Use the earliest row createdAt so the result
-    // never depends on adapter row ordering.
+    // never depends on adapter row ordering. The core stamps createdAt at init,
+    // so a pending batch that can't produce one means the adapter dropped a
+    // library-owned column — fail closed rather than skip the deadline. (The
+    // `instanceof Date` guard also turns a non-Date createdAt into "absent"
+    // instead of a `.getTime()` crash.)
     const createdAtMs = files
-      .map((file) => file.createdAt?.getTime())
+      .map((file) => (file.createdAt instanceof Date ? file.createdAt.getTime() : undefined))
       .filter((ms): ms is number => typeof ms === "number");
-    if (createdAtMs.length > 0 && Date.now() - Math.min(...createdAtMs) > uploadWindowSeconds * 1000) {
+    if (createdAtMs.length === 0) {
+      throw new UploadStuffError({ code: "BAD_REQUEST", message: "Cannot determine upload age" });
+    }
+    if (Date.now() - Math.min(...createdAtMs) > uploadWindowSeconds * 1000) {
       throw new UploadStuffError({ code: "BAD_REQUEST", message: "Upload window expired" });
     }
 
@@ -248,6 +271,18 @@ export const createCore = <TFileUsageContext extends string>(
       batchId,
       storedAt: new Date(),
     });
+
+    if (updatedCount === 0) {
+      // We read the batch as pending but transitioned 0 rows. Either a
+      // concurrent completion already finalised it (idempotent success) or the
+      // rows were deleted (e.g. cleanup reaping an expired batch) between our
+      // read and this update. Returning success for vanished files would be
+      // silent data loss reported as 200, so re-read to tell them apart.
+      const current = await databaseAdapter.findFilesByBatchId({ batchId });
+      if (current.length === 0 || !current.every((file) => file.stored)) {
+        throw new UploadStuffError({ code: "BAD_REQUEST", message: "Batch is no longer available" });
+      }
+    }
 
     return {
       files: mappedFiles,

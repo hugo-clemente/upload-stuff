@@ -16,6 +16,8 @@ import type {
   ValidateFieldsDeclaration,
 } from "@upload-stuff/core";
 
+import { pickDeclaredFields } from "./fields";
+
 const resolveUploadWindowSeconds = (value: number | undefined): number => {
   const seconds = value ?? 3600;
   if (!Number.isInteger(seconds) || seconds < 1 || seconds > 604800) {
@@ -106,12 +108,7 @@ const buildServerUtils = <
       // Pass the raw row data; the storage adapter resolves its own object
       // metadata from the declared `fields` (the core no longer does),
       // so direct server uploads write the same metadata as the presigned flow.
-      const declaredFieldNames = Object.keys(config.fields ?? {});
-      const fieldValues = Object.fromEntries(
-        Object.entries(params.data as Record<string, unknown>).filter(([name]) =>
-          declaredFieldNames.includes(name),
-        ),
-      );
+      const fieldValues = pickDeclaredFields(config.fields, params.data as Record<string, unknown>);
 
       await config.storageAdapter.uploadFile({
         key,

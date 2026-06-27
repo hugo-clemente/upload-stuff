@@ -103,7 +103,12 @@ export type DatabaseFile<
   stored: boolean;
   storedAt?: Date;
   batchId?: string;
-  /** Set by the store on insert (DB default); present on reads, absent on writes. */
+  /**
+   * Upload-init timestamp. Stamped by the library on the rows it passes to
+   * `createFiles`, and read back to enforce the completion window and cleanup —
+   * so the deadline never depends on a DB default the adapter might not surface.
+   * Adapters must round-trip it like any other library-owned column.
+   */
   createdAt?: Date;
 } & InferFieldValues<TFields>;
 

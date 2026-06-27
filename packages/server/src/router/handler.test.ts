@@ -16,7 +16,9 @@ const fakeDatabaseAdapter = (opts: { createdAt?: Date } = {}): DatabaseAdapter =
   let rows: DatabaseFile<string>[] = [];
   return {
     createFiles: async ({ files }) => {
-      rows.push(...files.map((f) => ({ ...f, createdAt: f.createdAt ?? opts.createdAt ?? new Date() })));
+      // `opts.createdAt` is a test override (wins over the core-stamped value) so
+      // a test can simulate an old/expired batch; otherwise keep what the core set.
+      rows.push(...files.map((f) => ({ ...f, createdAt: opts.createdAt ?? f.createdAt ?? new Date() })));
     },
     findFilesByBatchId: async ({ batchId }) => rows.filter((r) => r.batchId === batchId),
     findFilesToCleanUp: async () => [],
@@ -190,6 +192,32 @@ describe("presigned upload headers (#5)", () => {
     const init = await handlers.initUpload("avatars", initData, ctx);
     expect(init.files[0]!.uploadHeaders).toEqual({ "x-amz-meta-owner": "alice" });
   });
+
+  it("forwards uploadWindowSeconds as the presign expiresInSeconds and the filename", async () => {
+    // oxlint-disable-next-line @typescript-eslint/no-explicit-any
+    let presignInfo: any;
+    const storageAdapter: StorageAdapter = {
+      ...fakeStorageAdapter(),
+      generatePresignedUpload: async (info) => {
+        presignInfo = info;
+        return { uploadUrl: `https://upload.test/${info.key}` };
+      },
+    };
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => storageAdapter,
+      databaseAdapter: () => fakeDatabaseAdapter(),
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+      uploadWindowSeconds: 1234,
+    });
+    const handlers = fileRouteHandlers({
+      fileRouter: { avatars: makeRoute(() => ({})) },
+      uploadStuff,
+    });
+
+    await handlers.initUpload("avatars", initData, ctx);
+    expect(presignInfo.expiresInSeconds).toBe(1234);
+    expect(presignInfo.filename).toBe("a.png");
+  });
 });
 
 describe("custom field persistence (#8 / #1)", () => {
@@ -270,13 +298,25 @@ describe("capability-based completion", () => {
 describe("token hashing", () => {
   it("stores sha256(batchToken) as the row batchId, never the raw token", async () => {
     const created: DatabaseFile<string>[] = [];
+    // A consistent in-memory adapter over a single `created` array — find AND
+    // update read/write the same rows, so completion genuinely transitions them
+    // to stored (an inconsistent fake would trip the post-update safety re-read).
     const databaseAdapter: DatabaseAdapter = {
       ...fakeDatabaseAdapter(),
       createFiles: async ({ files }) => {
         created.push(...files);
       },
-      // make completion find the stored (hashed) rows
       findFilesByBatchId: async ({ batchId }) => created.filter((r) => r.batchId === batchId),
+      updateFilesToStored: async ({ batchId }) => {
+        let updatedCount = 0;
+        for (const r of created) {
+          if (r.batchId === batchId && !r.stored) {
+            r.stored = true;
+            updatedCount++;
+          }
+        }
+        return { updatedCount };
+      },
     };
     const uploadStuff = UploadStuff()({
       storageAdapter: () => fakeStorageAdapter(),
@@ -407,6 +447,80 @@ describe("upload window", () => {
     // expired-window check would throw here.
     const res = await handlers.completeUpload("avatars", { batchToken }, ctx);
     expect(res.files).toHaveLength(1);
+    expect(completions).toBe(0);
+  });
+});
+
+describe("completion safety", () => {
+  const pendingRow = (batchId: string, overrides: Partial<DatabaseFile<string>> = {}): DatabaseFile<string> => ({
+    id: "f1",
+    key: "k1",
+    filename: "a.png",
+    size: 1024,
+    publicUrl: "https://cdn.test/k1",
+    contentType: "image/png",
+    usageContext: "avatars",
+    isPublic: false,
+    stored: false,
+    batchId,
+    createdAt: new Date(),
+    uploadSessionData: { input: null, middlewareData: {}, endpoint: "avatars" },
+    ...overrides,
+  });
+
+  it("fails closed (cannot determine age) when a pending batch's rows carry no createdAt", async () => {
+    const { createHash } = await import("node:crypto");
+    const batchToken = "no-createdat-token";
+    const batchId = createHash("sha256").update(batchToken).digest("hex");
+    // An adapter that drops the library-owned createdAt column on read.
+    const row = pendingRow(batchId, { createdAt: undefined });
+    const databaseAdapter: DatabaseAdapter = {
+      ...fakeDatabaseAdapter(),
+      findFilesByBatchId: async ({ batchId: id }) => (id === batchId ? [row] : []),
+    };
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => fakeStorageAdapter(),
+      databaseAdapter: () => databaseAdapter,
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+      uploadWindowSeconds: 3600,
+    });
+    const handlers = fileRouteHandlers({ fileRouter: { avatars: makeRoute(() => ({})) }, uploadStuff });
+    // No createdAt → age undeterminable → reject, never silently skip the window.
+    await expect(handlers.completeUpload("avatars", { batchToken }, ctx)).rejects.toThrow(
+      /determine upload age/i,
+    );
+  });
+
+  it("rejects with no false success when rows vanish between read and update", async () => {
+    const { createHash } = await import("node:crypto");
+    const batchToken = "vanishing-token";
+    const batchId = createHash("sha256").update(batchToken).digest("hex");
+    const row = pendingRow(batchId);
+    let deleted = false;
+    let completions = 0;
+    const databaseAdapter: DatabaseAdapter = {
+      ...fakeDatabaseAdapter(),
+      // The batch reads as pending, then disappears (e.g. cleanup) before update.
+      findFilesByBatchId: async ({ batchId: id }) => (id === batchId && !deleted ? [row] : []),
+      updateFilesToStored: async () => {
+        deleted = true;
+        return { updatedCount: 0 };
+      },
+    };
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => fakeStorageAdapter(),
+      databaseAdapter: () => databaseAdapter,
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+      uploadWindowSeconds: 3600,
+    });
+    const handlers = fileRouteHandlers({
+      fileRouter: { avatars: makeRoute(() => { completions++; return {}; }) },
+      uploadStuff,
+    });
+    // updatedCount === 0 + rows gone must NOT report success, and the hook must not run.
+    await expect(handlers.completeUpload("avatars", { batchToken }, ctx)).rejects.toThrow(
+      /no longer available/i,
+    );
     expect(completions).toBe(0);
   });
 });
