@@ -11,4 +11,4 @@ Adapters are now supplied to `UploadStuff(...)` as factories, and object metadat
 **BREAKING:**
 - Move your `objectMetadata` resolver from the `UploadStuff(...)` config into the `s3Adapter(...)` config.
 - A custom `DatabaseAdapter` passed as a plain object must now be supplied as a factory: `databaseAdapter: () => myAdapter` (or typed as `DatabaseAdapterFactory`).
-- `StorageObjectInfo` (the storage-adapter method input) changed: the pre-resolved `objectMetadata` field is replaced by the raw `filename`, `scope`, and `fields` so adapters resolve metadata themselves.
+- `StorageObjectInfo` (the storage-adapter method input) changed: the pre-resolved `objectMetadata` field is replaced by the raw `filename` and `fields` so adapters resolve metadata themselves (`generatePresignedUpload` also gains `expiresInSeconds`).

@@ -6,7 +6,7 @@ type Row = {
   id: string;
   filename: string;
   caption: string | null;
-  scope: string | null;
+  userId: string;
   contentType: string;
   publicUrl: string;
   createdAt: string;
@@ -40,7 +40,7 @@ export function Gallery({ user, refreshKey }: { user: string; refreshKey: number
           <img className="preview" src={row.publicUrl} alt={row.filename} style={{ maxWidth: 120 }} />
           <pre>
             {JSON.stringify(
-              { caption: row.caption, scope: row.scope, contentType: row.contentType },
+              { caption: row.caption, userId: row.userId, contentType: row.contentType },
               null,
               2,
             )}
