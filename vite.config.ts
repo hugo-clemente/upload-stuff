@@ -148,6 +148,13 @@ export default defineConfig({
   // keeps its own test block in its package-level vite.config.ts.
   test: {
     projects: ["packages/core", "packages/server", "packages/client"],
+    // Vitest 4 removed `coverage.all`; without `include` it only reports files
+    // imported during the run, so untested files (and whole packages whose own
+    // tests don't surface in the merge) silently vanish from the report.
+    coverage: {
+      include: ["packages/*/src/**/*.ts"],
+      exclude: ["**/*.test-d.ts"],
+    },
   },
 
   // Replaces turbo.json. `vp run` runs package.json scripts in workspace
