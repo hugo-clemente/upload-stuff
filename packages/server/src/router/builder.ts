@@ -23,7 +23,6 @@ const internalCreateBuilder = <
       in: UnsetMarker;
       out: UnsetMarker;
     };
-    _scope: UnsetMarker;
     _fields: UnsetMarker;
     _fieldsDeclaration: TFieldsDeclaration;
     _middlewareData: UnsetMarker;
@@ -46,7 +45,6 @@ const internalCreateBuilder = <
         vendor: "uploadstuff default parser",
       },
     },
-    scope: () => undefined,
     middleware: () => ({}),
     fields: () => ({}),
     onUploadComplete: () => ({}),
@@ -59,13 +57,6 @@ const internalCreateBuilder = <
       return internalCreateBuilder<TContext, TFileUsageContext, TFieldsDeclaration>({
         ..._def,
         inputParser: parser,
-      }) as UploadBuilder<any, TFileUsageContext>;
-    },
-
-    scope(fn) {
-      return internalCreateBuilder<TContext, TFileUsageContext, TFieldsDeclaration>({
-        ..._def,
-        scope: fn,
       }) as UploadBuilder<any, TFileUsageContext>;
     },
 
@@ -110,7 +101,6 @@ export const createUploadStuffRouter =
         in: UnsetMarker;
         out: UnsetMarker;
       };
-      _scope: UnsetMarker;
       _fields: UnsetMarker;
       _fieldsDeclaration: TUploadStuff["$types"]["fields"];
       _middlewareData: UnsetMarker;

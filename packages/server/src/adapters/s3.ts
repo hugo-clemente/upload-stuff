@@ -1,12 +1,34 @@
 import * as AWS from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-import type { StorageAdapter, StorageObjectInfo } from "@upload-stuff/core";
+import type {
+  AdapterTypeInfo,
+  FieldsDeclaration,
+  InferFieldValues,
+  ObjectMetadataInput,
+  ObjectMetadataResolver,
+  StorageAdapter,
+  StorageObjectInfo,
+} from "@upload-stuff/core";
 
-export const s3Adapter = (params: {
-  config: AWS.S3ClientConfig;
-  bucket: string;
-}): StorageAdapter => {
+// Curried + generic so it's supplied to `UploadStuff(...)` as a factory: the
+// library calls it with a type marker that infers TFileUsageContext/TFields, which
+// in turn types this adapter's own `objectMetadata` resolver.
+export const s3Adapter =
+  <
+    TFileUsageContext extends string = string,
+    TFields extends FieldsDeclaration = Record<never, never>,
+  >(params: {
+    config: AWS.S3ClientConfig;
+    bucket: string;
+    /**
+     * Resolve S3 object metadata (`x-amz-meta-*`) from each row, typed against the
+     * instance's declared `fields`. Returns a flat string map written as object
+     * metadata. Defaults to none.
+     */
+    objectMetadata?: ObjectMetadataResolver<TFileUsageContext, TFields>;
+  }) =>
+  (_info: AdapterTypeInfo<TFileUsageContext, TFields>): StorageAdapter => {
   const s3Client = new AWS.S3Client(params.config);
   const bucket = params.bucket;
 
@@ -34,12 +56,29 @@ export const s3Adapter = (params: {
     }
   };
 
-  const buildPutObjectInput = (info: StorageObjectInfo): AWS.PutObjectCommandInput => ({
+  // Resolve this adapter's object metadata from the raw row the core passes
+  // (the declared field values). The core no longer pre-resolves it, so
+  // both the presigned and direct-upload paths run the same resolver here.
+  const resolveMetadata = (info: StorageObjectInfo): Record<string, string> =>
+    params.objectMetadata?.({
+      key: info.key,
+      filename: info.filename,
+      size: info.size,
+      contentType: info.contentType,
+      usageContext: info.usageContext as TFileUsageContext,
+      isPublic: info.isPublic,
+      ...(info.fields as InferFieldValues<TFields>),
+    } as ObjectMetadataInput<TFileUsageContext, TFields>) ?? {};
+
+  const buildPutObjectInput = (
+    info: StorageObjectInfo,
+    metadata: Record<string, string>,
+  ): AWS.PutObjectCommandInput => ({
     Bucket: bucket,
     Key: info.key,
     ContentType: info.contentType,
     ContentLength: info.size,
-    Metadata: info.objectMetadata ?? {},
+    Metadata: metadata,
     ACL: info.isPublic ? "public-read" : "private",
   });
 
@@ -47,20 +86,24 @@ export const s3Adapter = (params: {
   // those exact headers or the signature check fails. Surface them as
   // `requiredHeaders` for the upload plan. `Content-Type` is signed too but the
   // client always sends it, so it's intentionally left out here.
-  const metadataHeaders = (objectMetadata: Record<string, string> | undefined) =>
+  const metadataHeaders = (metadata: Record<string, string>) =>
     Object.fromEntries(
-      Object.entries(objectMetadata ?? {}).map(([key, value]) => [`x-amz-meta-${key}`, value]),
+      Object.entries(metadata).map(([key, value]) => [`x-amz-meta-${key}`, value]),
     );
 
   return {
-    generatePresignedUpload: async (params) => {
-      const command = new AWS.PutObjectCommand(buildPutObjectInput(params));
+    generatePresignedUpload: async (info) => {
+      const metadata = resolveMetadata(info);
+      const command = new AWS.PutObjectCommand(buildPutObjectInput(info, metadata));
+      const requiredHeaders = metadataHeaders(metadata);
 
       const uploadUrl = await getSignedUrl(s3Client, command, {
-        expiresIn: 3600, // 1 hour
+        expiresIn: info.expiresInSeconds,
+        // Keep x-amz-meta-* as SIGNED HEADERS (not hoisted into the query string):
+        // the client replays them via requiredHeaders, and hoisted+replayed would be
+        // an unsigned-header signature mismatch. Also keeps metadata out of the URL.
+        unhoistableHeaders: new Set(Object.keys(requiredHeaders)),
       });
-
-      const requiredHeaders = metadataHeaders(params.objectMetadata);
 
       return {
         uploadUrl,
@@ -68,16 +111,17 @@ export const s3Adapter = (params: {
       };
     },
 
-    uploadFile: async (params) => {
+    uploadFile: async (info) => {
+      const metadata = resolveMetadata(info);
       const command = new AWS.PutObjectCommand({
-        ...buildPutObjectInput(params),
-        Body: params.content,
+        ...buildPutObjectInput(info, metadata),
+        Body: info.content,
       });
 
       await s3Client.send(command);
 
       return {
-        key: params.key,
+        key: info.key,
       };
     },
 

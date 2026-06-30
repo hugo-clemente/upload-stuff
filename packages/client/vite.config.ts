@@ -15,4 +15,8 @@ export default defineConfig({
     // Emit .js/.d.ts (not .mjs/.d.mts) to match the package.json `exports`.
     fixedExtension: false,
   },
+  // Migrated from the former vitest.config.ts; matches core/server.
+  test: {
+    typecheck: { enabled: true, tsconfig: "./tsconfig.json" },
+  },
 });

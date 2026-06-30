@@ -53,20 +53,26 @@ export const uploadStuff = UploadStuff<FileUsageContext>()({
       },
     },
     bucket: process.env.S3_BUCKET!,
+    // Optional — write object-storage metadata, typed against `fields` below by
+    // inference. file.entityId and file.userId are typed from the declaration.
+    objectMetadata: (file) => ({ entity: file.entityId ?? "", owner: file.userId ?? "" }),
   }),
   databaseAdapter: prismaAdapter({ prisma }),
   filePublicUrlGenerator: ({ key }) => `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${key}`,
   // Declare any custom columns persisted on every File row (typed end-to-end).
   fields: {
     entityId: { type: "string", required: false },
+    userId: { type: "string", required: false },
   },
-  // Optional — write object-storage metadata, typed against `fields` above.
-  // file.entityId is `string | undefined`, file.scope is `string | undefined`.
-  objectMetadata: (file) => ({ entity: file.entityId ?? "", owner: file.scope ?? "" }),
+  // Optional — window (seconds) for presign expiry, the completion deadline, and
+  // abandoned-row cleanup. Default 3600 (1h), range 1..604800.
+  uploadWindowSeconds: 3600,
 });
 ```
 
 `UploadStuff<FileUsageContext>()` is curried: the type argument fixes the file-usage-context union, and the second call infers the `fields` declaration from the config.
+
+The adapters are supplied as factories (`s3Adapter(...)`, `prismaAdapter(...)`): the library calls each with the instance's resolved types, so `TFileUsageContext` and `fields` are inferred end-to-end — you never pass adapter generics by hand, and an adapter's own typed options (like the S3 adapter's `objectMetadata`) are typed against your `fields` automatically.
 
 ### 2. Define a file router
 
@@ -88,8 +94,10 @@ export const fileRouter = {
     maxFileSize: "4MB",
     maxFileCount: 1,
   })
-    // Ownership: only the same user can finalize their own upload batch.
-    .scope(({ ctx }) => ctx.userId)
+    // Persist the uploader as a plain `userId` column (declared in `fields`) so
+    // you can filter your own listing queries by it. It carries no auth weight —
+    // completion is guarded by the secret batch token, not identity.
+    .fields(({ ctx }) => ({ userId: ctx.userId }))
     .middleware(({ ctx }) => ({ userId: ctx.userId }))
     .onUploadComplete(({ files, middlewareData }) => {
       console.log("Uploaded by", middlewareData.userId, files);
@@ -103,9 +111,8 @@ export const fileRouter = {
     maxFileSize: "16MB",
   })
     .input(z.object({ folderId: z.string() }))
-    .scope(({ ctx }) => ctx.userId)
-    // Persist the declared `entityId` column for this upload.
-    .fields(({ input }) => ({ entityId: input.folderId }))
+    // Persist the declared columns for this upload.
+    .fields(({ input, ctx }) => ({ entityId: input.folderId, userId: ctx.userId }))
     .middleware(({ ctx, input }) => ({ userId: ctx.userId, folderId: input.folderId }))
     .onUploadComplete(({ files, middlewareData }) => ({
       folderId: middlewareData.folderId,
@@ -116,9 +123,9 @@ export const fileRouter = {
 export type FileRouter = typeof fileRouter;
 ```
 
-`.scope()` makes uploads owner-scoped: it derives an opaque token from `ctx` (a `userId`, `orgId`, `"user:A|org:X"`, …) at init and re-derives it at completion, so only the original owner can finalize a batch. Derive it from `ctx` only — never from `input` (at completion `input` is the original uploader's stored value, so an input-derived scope would let any batchId holder pass the guard). An absent or `undefined` scope means an anonymous batch any holder of the batchId can finalize.
+**Completion is guarded by a per-batch capability token, not identity.** Init returns a high-entropy secret `batchToken`; the server stores only `sha256(token)` and the client replays the token to finalize the batch. Holding the token is the authorization — treat it as a secret (HTTPS, request-body only, never logged). For owner-scoped *listing*, persist the uploader with `.fields()` (as above) and filter your own queries by that column; don't rely on it for completion auth. A leaked token lets its holder complete the batch and receive whatever your `onUploadComplete` returns, so keep sensitive values out of that return.
 
-`.fields()` provides the values for the custom columns declared on `UploadStuff({ fields })`; add a matching column to your `File` table for each. The library itself ships no `uploadedBy`/`entityId` columns — declare what your app needs.
+`.fields()` provides the values for the custom columns declared on `UploadStuff({ fields })`; add a matching column to your `File` table for each. The library itself ships no `userId`/`entityId` columns — declare what your app needs.
 
 ### 3. Wire up the Next.js App Router handler
 
@@ -215,12 +222,14 @@ const storage = s3Adapter({
     },
   },
   bucket: "my-bucket",
+  // Optional. Typed against the instance's `fields` by inference.
+  objectMetadata: (file) => ({ owner: file.userId ?? "" }),
 });
 ```
 
-The `config` field accepts the full `S3ClientConfig` from `@aws-sdk/client-s3`.
+`s3Adapter(...)` returns a factory that `UploadStuff(...)` calls with the instance's resolved types — pass it straight to `storageAdapter`. The `config` field accepts the full `S3ClientConfig` from `@aws-sdk/client-s3`.
 
-Object-storage metadata is configured by `objectMetadata` on `UploadStuff(...)` (typed against your `fields`), not on the adapter — the adapter just writes whatever the core resolves. It defaults to none. Object metadata is returned on every `GetObject`, so avoid exposing a `scope` that encodes a user id on public buckets unless you intend to.
+Object-storage metadata is configured by `objectMetadata` on the **s3 adapter** (typed against your `fields`), and defaults to none. The adapter signs it as `x-amz-meta-*` request headers (kept out of the presigned URL) and the client replays them on the PUT. Object metadata is returned on every `GetObject`, so avoid putting sensitive values (e.g. a user id) in metadata on public buckets unless you intend to expose them.
 
 ### Peer dependencies
 
@@ -240,7 +249,7 @@ import { prismaAdapter } from "@upload-stuff/server/adapters/prisma";
 const db = prismaAdapter({ prisma });
 ```
 
-**This is a reference adapter for one specific `File` schema** — it is not a general-purpose adapter. It implements the `DatabaseAdapter` interface from `@upload-stuff/core` against a particular Prisma model shape.
+**This is a reference adapter for one specific `File` schema** — it is not a general-purpose adapter. It implements the `DatabaseAdapter` interface from `@upload-stuff/core` against a particular Prisma model shape. `prismaAdapter({ prisma })` returns a factory; pass it straight to `databaseAdapter` and its types are inferred from your `UploadStuff(...)` config.
 
 ### Peer dependency
 
@@ -268,26 +277,26 @@ model File {
   stored            Boolean   @default(false)
   storedAt          DateTime?
   batchId           String?
-  scope             String?
   // Plus one column per custom field declared on `UploadStuff({ fields })`.
-  // e.g. for `fields: { entityId: { type: "string" } }`:
+  // e.g. for `fields: { entityId: {...}, userId: {...} }`:
   entityId          String?
+  userId            String?
   createdAt         DateTime  @default(now())
 }
 ```
 
 ### Custom database adapter
 
-For any other ORM or database, implement the `DatabaseAdapter` interface from `@upload-stuff/core`:
+For any other ORM or database, implement the `DatabaseAdapter` interface from `@upload-stuff/core` and supply it as a factory (`DatabaseAdapterFactory`). The library calls the factory with a type-only marker, so you can let the types be inferred and ignore the argument:
 
 ```ts
-import type { DatabaseAdapter } from "@upload-stuff/core";
+import type { DatabaseAdapterFactory } from "@upload-stuff/core";
 
-const myAdapter: DatabaseAdapter<"avatar" | "document"> = {
+const myAdapter: DatabaseAdapterFactory<"avatar" | "document"> = () => ({
   createFiles: async ({ files }) => {
     /* ... */
   },
-  findFilesByBatchIdAndScope: async (params) => {
+  findFilesByBatchId: async (params) => {
     /* ... */
   },
   findFilesToCleanUp: async (params) => {
@@ -302,7 +311,9 @@ const myAdapter: DatabaseAdapter<"avatar" | "document"> = {
   deleteFiles: async (params) => {
     /* ... */
   },
-};
+});
+
+// ...then: databaseAdapter: myAdapter
 ```
 
 ## Server utilities
@@ -312,7 +323,7 @@ The `UploadStuff` instance exposes `serverUtils` for background tasks:
 ```ts
 import { uploadStuff } from "@/lib/upload-stuff";
 
-// Clean up upload sessions older than 24 hours that were never completed
+// Clean up never-completed upload sessions older than `uploadWindowSeconds` (default 1h)
 await uploadStuff.serverUtils.cleanUpFiles();
 
 // Upload a file directly from the server (no presigned URL flow)
@@ -323,7 +334,8 @@ await uploadStuff.serverUtils.uploadFile({
     size: buffer.byteLength,
     usageContext: "document",
     isPublic: false,
-    scope: userId,
+    // plus any columns declared in `fields`, e.g.:
+    userId: "user-1",
   },
   content: buffer,
 });
@@ -339,7 +351,6 @@ await uploadStuff.serverUtils.deleteFiles([fileId]);
 | Method                  | Description                                                                                |
 | ----------------------- | ------------------------------------------------------------------------------------------ |
 | `.input(schema)`        | Attach a [Standard Schema](https://standardschema.dev/)-compatible input parser (e.g. Zod) |
-| `.scope(fn)`            | Return an opaque ownership token from `ctx`; only a request that re-derives the same scope can finalize the batch |
 | `.middleware(fn)`       | Run server-side logic; return data forwarded to `onUploadComplete`                         |
 | `.fields(fn)`           | Return values for the custom columns declared on `UploadStuff({ fields })`, persisted on the File row |
 | `.onUploadComplete(fn)` | Called after the upload is verified; return value is sent back to the client               |

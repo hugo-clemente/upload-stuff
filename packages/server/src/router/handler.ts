@@ -19,7 +19,7 @@ export type InitUploadHandlerData = {
 };
 
 export type CompleteUploadHandlerData = {
-  batchId: string;
+  batchToken: string;
 };
 
 export type RouteHandlers = {
@@ -51,8 +51,8 @@ export const fileRouteHandlers = ({
     fileIdGenerator: uploadStuff.__fileIdGenerator,
     fileKeyGenerator: uploadStuff.__fileKeyGenerator,
     filePublicUrlGenerator: uploadStuff.__filePublicUrlGenerator,
-    objectMetadata: uploadStuff.__objectMetadata,
     fields: uploadStuff.__fields,
+    uploadWindowSeconds: uploadStuff.__uploadWindowSeconds,
   });
 
   const getRoute = (endpoint: string) => {
@@ -91,8 +91,6 @@ export const fileRouteHandlers = ({
         ctx,
       });
 
-      const scope = await route.scope({ ctx });
-
       const fieldValues = await route.fields({
         files,
         input: parsedInput,
@@ -104,7 +102,6 @@ export const fileRouteHandlers = ({
         files,
         config: route.routeConfig,
         input: parsedInput as Json,
-        scope,
         fieldValues,
         middlewareData,
         endpoint,
@@ -113,17 +110,11 @@ export const fileRouteHandlers = ({
       return result;
     },
 
-    completeUpload: async (endpoint, { batchId }, ctx) => {
+    completeUpload: async (endpoint, { batchToken }, _ctx) => {
       const route = getRoute(endpoint);
 
-      // Re-derive the scope from the live ctx and filter completion by it —
-      // this is the ownership guard. A different principal re-derives a
-      // different scope and matches no rows. Middleware is NOT re-run.
-      const scope = await route.scope({ ctx });
-
       const { files, input, middlewareData, alreadyCompleted } = await core.completeUpload({
-        batchId,
-        scope,
+        batchToken,
         endpoint,
       });
 
@@ -133,7 +124,6 @@ export const fileRouteHandlers = ({
         ? undefined
         : await route.onUploadComplete({
             files,
-            ctx,
             input,
             middlewareData,
           });

@@ -33,10 +33,31 @@ const fakePrisma = () => {
   };
 };
 
+describe("prismaAdapter.findFilesByBatchId", () => {
+  it("queries by batchId with no scope filter", async () => {
+    let lastWhere: Record<string, unknown> | undefined;
+    const client = {
+      file: {
+        createMany: async () => ({ count: 0 }),
+        findMany: async (args: any) => {
+          lastWhere = args.where;
+          return [];
+        },
+        update: async (args: any) => args,
+        updateMany: async () => ({ count: 0 }),
+        deleteMany: async () => ({}),
+      },
+    };
+    const adapter = prismaAdapter({ prisma: client })({});
+    await adapter.findFilesByBatchId({ batchId: "b1" });
+    expect(lastWhere).toEqual({ batchId: "b1" });
+  });
+});
+
 describe("prismaAdapter.deleteFiles", () => {
   it("deletes from storage before deleting DB rows", async () => {
     const fake = fakePrisma();
-    const adapter = prismaAdapter({ prisma: fake.client });
+    const adapter = prismaAdapter({ prisma: fake.client })({});
     const deletedKeys: string[][] = [];
 
     await adapter.deleteFiles({
@@ -54,7 +75,7 @@ describe("prismaAdapter.deleteFiles", () => {
 
   it("keeps DB rows when the storage delete fails", async () => {
     const fake = fakePrisma();
-    const adapter = prismaAdapter({ prisma: fake.client });
+    const adapter = prismaAdapter({ prisma: fake.client })({});
 
     await expect(
       adapter.deleteFiles({

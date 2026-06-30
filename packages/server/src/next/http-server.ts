@@ -45,7 +45,7 @@ const initUploadHandlerSchema = z.object({
 });
 
 const completeUploadHandlerSchema = z.object({
-  batchId: z.string(),
+  batchToken: z.string(),
 });
 
 const createRoutes = ({

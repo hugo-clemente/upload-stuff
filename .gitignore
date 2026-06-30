@@ -7,3 +7,7 @@ dist
 .vercel
 out
 next-env.d.ts
+
+# Local planning docs (brainstorms/plans/specs) — kept locally, not tracked.
+# Anchored to root so apps/docs (the docs site) stays tracked.
+/docs/

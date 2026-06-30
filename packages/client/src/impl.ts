@@ -24,6 +24,7 @@ import {
 } from "@upload-stuff/core";
 
 import { compressImage } from "./compress-images";
+import { mergeHeaders } from "./headers";
 
 /* oxlint-disable @typescript-eslint/no-explicit-any */
 
@@ -149,6 +150,8 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
         }
         isUploadingRef.current = true;
 
+        const requestHeaders = mergeHeaders(opts?.headers, runOpts?.headers);
+
         const signal = runOpts?.signal;
         let onAbort: (() => void) | undefined;
 
@@ -170,15 +173,18 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
 
           validateFiles(meta, routeConfig);
 
-          const uploadPlan = await initMutation({
-            param: {
-              endpoint: resolvedEndpoint as string,
+          const uploadPlan = await initMutation(
+            {
+              param: {
+                endpoint: resolvedEndpoint as string,
+              },
+              json: {
+                input: input ?? null,
+                files: meta,
+              },
             },
-            json: {
-              input: input ?? null,
-              files: meta,
-            },
-          });
+            { headers: requestHeaders },
+          );
 
           totalBytesRef.current = preparedFiles.reduce((acc, f) => acc + f.size, 0);
 
@@ -243,14 +249,17 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
             throw new Error("Upload aborted.");
           }
 
-          const verified = await completeMutation({
-            param: {
-              endpoint: resolvedEndpoint as string,
+          const verified = await completeMutation(
+            {
+              param: {
+                endpoint: resolvedEndpoint as string,
+              },
+              json: {
+                batchToken: uploadPlan.batchToken,
+              },
             },
-            json: {
-              batchId: uploadPlan.batchId,
-            },
-          });
+            { headers: requestHeaders },
+          );
 
           // Only report 100% on success — a failed/aborted upload must not
           // leave the consumer's progress UI showing a completed bar.

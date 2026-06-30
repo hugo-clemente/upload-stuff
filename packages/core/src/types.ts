@@ -1,6 +1,4 @@
 /* oxlint-disable @typescript-eslint/no-explicit-any */
-import type { SetOptional } from "type-fest";
-
 import type { Json } from "./utils/types";
 
 /** Declared custom-field value types. */
@@ -56,8 +54,8 @@ export type InferFieldValues<TFields extends FieldsDeclaration> =
  * Library-owned columns present on every persisted file row. A custom field may
  * not reuse one of these names: at insert time the resolved field values are
  * spread alongside these columns, so a collision would let a `.fields()` value
- * overwrite the library's own state (the `scope` ownership token, the `stored`
- * completion flag, the `batchId` grouping, …) and corrupt the upload lifecycle.
+ * overwrite the library's own state (the `stored` completion flag, the `batchId`
+ * grouping, …) and corrupt the upload lifecycle.
  */
 export const RESERVED_FIELD_NAMES = [
   "id",
@@ -73,7 +71,6 @@ export const RESERVED_FIELD_NAMES = [
   "storedAt",
   "createdAt",
   "batchId",
-  "scope",
 ] as const;
 
 export type ReservedFieldName = (typeof RESERVED_FIELD_NAMES)[number];
@@ -107,12 +104,12 @@ export type DatabaseFile<
   storedAt?: Date;
   batchId?: string;
   /**
-   * Opaque ownership token, owned by the library but never interpreted by it.
-   * Scopes batch completion: only a request that re-derives the same value can
-   * finalize a batch. `undefined` denotes an anonymous batch. Derive it from the
-   * live `ctx` only — see `.scope()`.
+   * Upload-init timestamp. Stamped by the library on the rows it passes to
+   * `createFiles`, and read back to enforce the completion window and cleanup —
+   * so the deadline never depends on a DB default the adapter might not surface.
+   * Adapters must round-trip it like any other library-owned column.
    */
-  scope?: string;
+  createdAt?: Date;
 } & InferFieldValues<TFields>;
 
 export type DatabaseAdapter<
@@ -121,14 +118,8 @@ export type DatabaseAdapter<
 > = {
   createFiles: (params: { files: DatabaseFile<TFileUsageContext, TFields>[] }) => Promise<void>;
 
-  findFilesByBatchIdAndScope: (params: {
+  findFilesByBatchId: (params: {
     batchId: string;
-    /**
-     * Scope filter. A defined value matches only that scope's files; an
-     * `undefined` value matches only files with no scope (anonymous uploads).
-     * Adapters MUST NOT treat `undefined` as "match any scope".
-     */
-    scope?: string;
   }) => Promise<DatabaseFile<TFileUsageContext, TFields>[]>;
 
   findFilesToCleanUp: (params: {
@@ -137,11 +128,6 @@ export type DatabaseAdapter<
 
   updateFilesToStored: (params: {
     batchId: string;
-    /**
-     * Scope filter — same semantics as findFilesByBatchIdAndScope:
-     * `undefined` matches only anonymous (scopeless) files, never any scope.
-     */
-    scope?: string;
     storedAt: Date;
   }) => Promise<{ updatedCount: number }>;
 
@@ -157,10 +143,7 @@ export type DatabaseAdapter<
 
 export type FileUploadContent = string | Uint8Array;
 
-/**
- * The row data passed to an `objectMetadata` resolver: the opaque `scope`, the
- * base file columns, and the typed declared custom fields.
- */
+/** The row data passed to an `objectMetadata` resolver: the base file columns and the typed declared custom fields. */
 export type ObjectMetadataInput<
   TFileUsageContext extends string,
   TFields extends FieldsDeclaration,
@@ -171,7 +154,6 @@ export type ObjectMetadataInput<
   contentType: string;
   usageContext: TFileUsageContext;
   isPublic: boolean;
-  scope?: string;
 } & InferFieldValues<TFields>;
 
 /** Maps a stored file's row onto an object-metadata key/value map. */
@@ -181,26 +163,29 @@ export type ObjectMetadataResolver<
 > = (file: ObjectMetadataInput<TFileUsageContext, TFields>) => Record<string, string>;
 
 /**
- * What a storage adapter needs to store an object: the base columns plus the
- * already-resolved object metadata (the core computes it from `objectMetadata`).
+ * What a storage adapter needs to store an object: the raw row data including
+ * the resolved custom `fields`. An adapter that supports object metadata resolves
+ * it from this via its own `objectMetadata` option (the core no longer pre-resolves it).
  */
 export type StorageObjectInfo = {
   key: string;
+  filename: string;
   contentType: string;
   size: number;
   usageContext: string;
   isPublic: boolean;
-  objectMetadata?: Record<string, string>;
+  /** Resolved custom-field values, already filtered to the declared keys. */
+  fields: Record<string, unknown>;
 };
 
 export type StorageAdapter = {
-  generatePresignedUpload: (params: StorageObjectInfo) => Promise<{
+  generatePresignedUpload: (params: StorageObjectInfo & { expiresInSeconds: number }) => Promise<{
     uploadUrl: string;
     /**
      * Headers the client MUST send on the PUT for the request to match the
-     * signature. When `objectMetadata` is non-empty the presigned URL signs the
-     * corresponding metadata headers (e.g. S3 `x-amz-meta-*`); the client has to
-     * replay them verbatim or storage rejects the upload. `Content-Type` is
+     * signature. When the adapter writes object metadata, the presigned URL signs
+     * the corresponding metadata headers (e.g. S3 `x-amz-meta-*`); the client has
+     * to replay them verbatim or storage rejects the upload. `Content-Type` is
      * handled separately by the client and is not included here.
      */
     requiredHeaders?: Record<string, string>;
@@ -231,6 +216,35 @@ export type StorageAdapter = {
   batchDeleteFiles: (params: { fileKeys: string[]; throwIfError?: boolean }) => Promise<void>;
 };
 
+/**
+ * Phantom marker carrying an instance's resolved `TFileUsageContext` and
+ * `TFields` to an adapter factory. Adapters are supplied to `UploadStuff(...)` as
+ * factories `(info) => adapter`; the library calls the factory once with this
+ * marker, so the factory's type parameters are inferred from the `UploadStuff`
+ * config instead of being passed explicitly. It holds no runtime data.
+ */
+export type AdapterTypeInfo<
+  TFileUsageContext extends string = string,
+  TFields extends FieldsDeclaration = Record<never, never>,
+> = {
+  readonly __fileUsageContext?: TFileUsageContext;
+  readonly __fields?: TFields;
+};
+
+/** A storage adapter as supplied to `UploadStuff(...)`. `TFields` rides on the
+ * marker so an adapter's typed `objectMetadata` option is inferred. */
+export type StorageAdapterFactory<
+  TFileUsageContext extends string = string,
+  TFields extends FieldsDeclaration = Record<never, never>,
+> = (info: AdapterTypeInfo<TFileUsageContext, TFields>) => StorageAdapter;
+
+/** A database adapter as supplied to `UploadStuff(...)`; its types are inferred
+ * from the marker the library passes. */
+export type DatabaseAdapterFactory<
+  TFileUsageContext extends string = string,
+  TFields extends FieldsDeclaration = Record<never, never>,
+> = (info: AdapterTypeInfo<TFileUsageContext, TFields>) => DatabaseAdapter<TFileUsageContext, TFields>;
+
 export type FileKeyGenerator = (params: {
   fileId: string;
   filename: string;
@@ -244,32 +258,44 @@ export type FileIdGenerator = (params: {
 
 export type FilePublicUrlGenerator = (params: { key: string }) => string | Promise<string>;
 
+/**
+ * The resolved, internal config the server layer operates on after the adapter
+ * factories have been called. Consumers never construct this directly — they pass
+ * a `CreateUploadStuffConfig` (with adapter *factories*) to `UploadStuff(...)`.
+ */
 export type UploadStuffConfig<
   TFileUsageContext extends string,
   TFields extends FieldsDeclaration = Record<never, never>,
 > = {
   storageAdapter: StorageAdapter;
-  // `NoInfer` so `TFields` is fixed by the central `fields` declaration below and
-  // merely *checked* here — otherwise the adapter (e.g. a defaulted
-  // `prismaAdapter()`) would also be an inference site and could pin `TFields` to
-  // `{}`, silently dropping the declared columns from the typed contract.
-  databaseAdapter: DatabaseAdapter<TFileUsageContext, NoInfer<TFields>>;
+  databaseAdapter: DatabaseAdapter<TFileUsageContext, TFields>;
   fileIdGenerator: FileIdGenerator;
   fileKeyGenerator: FileKeyGenerator;
   filePublicUrlGenerator: FilePublicUrlGenerator;
   /** Central declaration of the custom columns this instance persists. */
   fields?: TFields;
-  /**
-   * Resolve object-storage metadata (e.g. S3 `x-amz-meta-*`) from each row,
-   * typed against the declared `fields`. The storage adapter writes the result.
-   */
-  objectMetadata?: ObjectMetadataResolver<TFileUsageContext, NoInfer<TFields>>;
+  /** Window (seconds) for presign expiry, completion deadline, and cleanup. */
+  uploadWindowSeconds: number;
 };
 
+/**
+ * The config a consumer passes to `UploadStuff(...)`. Adapters are supplied as
+ * factories so their `TFileUsageContext`/`TFields` are inferred from this config
+ * (no explicit generics at the call site). `NoInfer` keeps `TFields` fixed by the
+ * central `fields` declaration rather than letting an adapter pin it to `{}`.
+ */
 export type CreateUploadStuffConfig<
   TFileUsageContext extends string,
   TFields extends FieldsDeclaration = Record<never, never>,
-> = SetOptional<
-  UploadStuffConfig<TFileUsageContext, TFields>,
-  "fileIdGenerator" | "fileKeyGenerator"
->;
+> = {
+  storageAdapter: StorageAdapterFactory<TFileUsageContext, NoInfer<TFields>>;
+  databaseAdapter: DatabaseAdapterFactory<TFileUsageContext, NoInfer<TFields>>;
+  fileIdGenerator?: FileIdGenerator;
+  fileKeyGenerator?: FileKeyGenerator;
+  filePublicUrlGenerator: FilePublicUrlGenerator;
+  /** Central declaration of the custom columns this instance persists. */
+  fields?: TFields;
+  /** Window in seconds (default 3600, 1..604800) for presign expiry, completion
+   * deadline, and abandoned-row cleanup. */
+  uploadWindowSeconds?: number;
+};

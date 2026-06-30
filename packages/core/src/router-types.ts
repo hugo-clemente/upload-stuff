@@ -20,8 +20,7 @@ export type AnyRouteConfig = RouteConfig<string>;
 
 /**
  * The request context, fully defined by the consumer. The library no longer
- * requires any particular field (it used to require `userId`); ownership is now
- * an opaque `scope` derived from this context.
+ * requires any particular field.
  *
  * Constrained to `object` rather than `Record<string, unknown>` on purpose:
  * interfaces (e.g. `interface AppContext { userId: string }`) lack an implicit
@@ -45,18 +44,6 @@ type MiddlewareFn<
   ctx: TContext;
 }) => TOutput | Promise<TOutput>;
 
-/**
- * Resolves the opaque ownership token for a batch. Runs at init (to persist the
- * scope) and again at completion (to re-derive and filter by it). Reads `ctx`
- * only — the live, server-verified context — so the completer's own identity is
- * what's checked. It must NOT read `input`: at completion `input` is the original
- * uploader's stored value, so an input-derived scope would let any batchId holder
- * pass the guard.
- */
-type ScopeFn<TContext extends ValidContextObject> = (params: {
-  ctx: TContext;
-}) => string | undefined | Promise<string | undefined>;
-
 type FieldsFn<
   TContext extends ValidContextObject,
   TInput extends Json | UnsetMarker,
@@ -70,14 +57,13 @@ type FieldsFn<
 }) => InferFieldValues<TFields> | Promise<InferFieldValues<TFields>>;
 
 type UploadCompleteFn<
-  TContext extends ValidContextObject,
+  _TContext extends ValidContextObject,
   TInput extends Json | UnsetMarker,
   TMiddlewareData extends ValidMiddlewareObject | UnsetMarker,
   TOutput extends Json | void,
 > = (params: {
   files: UploadedFileData[];
   input: TInput;
-  ctx: TContext;
   middlewareData: TMiddlewareData;
 }) => TOutput | Promise<TOutput>;
 
@@ -93,7 +79,6 @@ export type FileRoute<TTypes extends AnyBuiltUploaderTypes, TFileUsageContext ex
   $types: TTypes;
   routeConfig: RouteConfig<TFileUsageContext>;
   inputParser: Standard.StandardSchemaV1;
-  scope: ScopeFn<any>;
   middleware: MiddlewareFn<any, any, ValidMiddlewareObject>;
   fields: FieldsFn<any, any, any, any>;
   onUploadComplete: UploadCompleteFn<any, any, any, any>;
@@ -130,7 +115,6 @@ type AnyParams = {
     in: any;
     out: any;
   };
-  _scope: any;
   _fields: any;
   _fieldsDeclaration: any;
   _middlewareData: any;
@@ -150,25 +134,6 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
         in: TIn;
         out: TOut;
       };
-      _scope: TParams["_scope"];
-      _fields: TParams["_fields"];
-      _fieldsDeclaration: TParams["_fieldsDeclaration"];
-      _middlewareData: TParams["_middlewareData"];
-      _ctx: TParams["_ctx"];
-      _completeFnData: TParams["_completeFnData"];
-    },
-    TFileUsageContext
-  >;
-
-  scope: (
-    fn: TParams["_scope"] extends UnsetMarker
-      ? ScopeFn<TParams["_ctx"]>
-      : ErrorMessage<"scope has already been set">,
-  ) => UploadBuilder<
-    {
-      _routeConfig: TParams["_routeConfig"];
-      _input: TParams["_input"];
-      _scope: ScopeFn<TParams["_ctx"]>;
       _fields: TParams["_fields"];
       _fieldsDeclaration: TParams["_fieldsDeclaration"];
       _middlewareData: TParams["_middlewareData"];
@@ -186,7 +151,6 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
     {
       _routeConfig: TParams["_routeConfig"];
       _input: TParams["_input"];
-      _scope: TParams["_scope"];
       _fields: TParams["_fields"];
       _fieldsDeclaration: TParams["_fieldsDeclaration"];
       _middlewareData: TOut;
@@ -209,7 +173,6 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
     {
       _routeConfig: TParams["_routeConfig"];
       _input: TParams["_input"];
-      _scope: TParams["_scope"];
       _fields: InferFieldValues<TParams["_fieldsDeclaration"]>;
       _fieldsDeclaration: TParams["_fieldsDeclaration"];
       _middlewareData: TParams["_middlewareData"];
@@ -227,7 +190,6 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
     {
       _routeConfig: TParams["_routeConfig"];
       _input: TParams["_input"];
-      _scope: TParams["_scope"];
       _fields: TParams["_fields"];
       _fieldsDeclaration: TParams["_fieldsDeclaration"];
       _ctx: TParams["_ctx"];
@@ -270,7 +232,7 @@ export type UploadStuffRouterWithContext<
 >;
 
 export type InitUploadResult = {
-  batchId: string;
+  batchToken: string;
   files: Array<ToUploadFileData>;
 };
 

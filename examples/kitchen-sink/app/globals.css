@@ -1,0 +1,55 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+body {
+  margin: 0;
+  padding: 2rem;
+  max-width: 760px;
+  margin-inline: auto;
+  line-height: 1.5;
+}
+button {
+  cursor: pointer;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+  background: transparent;
+}
+button[aria-pressed="true"] {
+  font-weight: 700;
+  outline: 2px solid currentColor;
+}
+.card {
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 10px;
+  padding: 1rem;
+  margin-block: 1rem;
+}
+.row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8rem;
+}
+.bar {
+  height: 8px;
+  background: color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.bar > span {
+  display: block;
+  height: 100%;
+  background: currentColor;
+}
+img.preview {
+  max-width: 240px;
+  border-radius: 8px;
+  display: block;
+}

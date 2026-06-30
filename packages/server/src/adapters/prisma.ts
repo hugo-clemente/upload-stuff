@@ -1,4 +1,9 @@
-import type { DatabaseAdapter, DatabaseFile, FieldsDeclaration } from "@upload-stuff/core";
+import type {
+  AdapterTypeInfo,
+  DatabaseAdapter,
+  DatabaseFile,
+  FieldsDeclaration,
+} from "@upload-stuff/core";
 
 /**
  * Minimal structural shape of the Prisma `File` delegate this adapter uses.
@@ -22,14 +27,21 @@ type PrismaClientLike = {
 };
 /* oxlint-enable @typescript-eslint/no-explicit-any */
 
-export const prismaAdapter = <
-  TFileUsageContext extends string = string,
-  TFields extends FieldsDeclaration = Record<never, never>,
->({
-  prisma,
-}: {
-  prisma: PrismaClientLike;
-}): DatabaseAdapter<TFileUsageContext, TFields> => {
+// Curried so it's supplied to `UploadStuff(...)` as a factory: the library calls
+// the returned function with a type marker, which infers TFileUsageContext/TFields
+// from the instance config — consumers never pass adapter generics by hand. The
+// generics sit on the outer call (matching s3Adapter) so the config object can
+// also carry field-typed options if a future adapter needs them.
+export const prismaAdapter =
+  <
+    TFileUsageContext extends string = string,
+    TFields extends FieldsDeclaration = Record<never, never>,
+  >({
+    prisma,
+  }: {
+    prisma: PrismaClientLike;
+  }) =>
+  (_info: AdapterTypeInfo<TFileUsageContext, TFields>): DatabaseAdapter<TFileUsageContext, TFields> => {
   return {
     createFiles: async ({ files }) => {
       await prisma.file.createMany({
@@ -41,14 +53,10 @@ export const prismaAdapter = <
       });
     },
 
-    findFilesByBatchIdAndScope: async (params) => {
+    findFilesByBatchId: async (params) => {
       const files = await prisma.file.findMany({
         where: {
           batchId: params.batchId,
-          // `?? null` matters: Prisma drops a `field: undefined` clause
-          // entirely (matches all rows), whereas `field: null` matches
-          // IS NULL. Anonymous uploads must only match anonymous batches.
-          scope: params.scope ?? null,
         },
       });
 
@@ -71,14 +79,11 @@ export const prismaAdapter = <
     },
 
     updateFilesToStored: async (params) => {
-      // `stored: false` in the where-clause makes this an atomic guard: a
-      // repeated or concurrent completion of the same batch updates 0 rows.
+      // `stored: false` makes this an atomic guard: a repeated or concurrent
+      // completion of the same batch updates 0 rows.
       const res = await prisma.file.updateMany({
         where: {
           batchId: params.batchId,
-          // See findFilesByBatchIdAndScope — `?? null` keeps the scope filter
-          // from silently vanishing for anonymous uploads.
-          scope: params.scope ?? null,
           stored: false,
         },
         data: {

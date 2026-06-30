@@ -1,8 +1,8 @@
 import { createId } from "@paralleldrive/cuid2";
-import { subHours } from "date-fns";
 
 import { RESERVED_FIELD_NAMES } from "@upload-stuff/core";
 import type {
+  AdapterTypeInfo,
   CreateUploadStuffConfig,
   DatabaseAdapter,
   DatabaseFile,
@@ -11,12 +11,22 @@ import type {
   FileKeyGenerator,
   FilePublicUrlGenerator,
   FileUploadContent,
-  ObjectMetadataInput,
-  ObjectMetadataResolver,
   StorageAdapter,
   UploadStuffConfig,
   ValidateFieldsDeclaration,
 } from "@upload-stuff/core";
+
+import { pickDeclaredFields } from "./fields";
+
+const resolveUploadWindowSeconds = (value: number | undefined): number => {
+  const seconds = value ?? 3600;
+  if (!Number.isInteger(seconds) || seconds < 1 || seconds > 604800) {
+    throw new Error(
+      `upload-stuff: uploadWindowSeconds must be an integer between 1 and 604800 (got ${value}).`,
+    );
+  }
+  return seconds;
+};
 
 const defaultFileIdGenerator = createId;
 const defaultFileKeyGenerator = (params: {
@@ -47,7 +57,7 @@ const buildServerUtils = <
   return {
     cleanUpFiles: async () => {
       const files = await config.databaseAdapter.findFilesToCleanUp({
-        createdAtThreshold: subHours(new Date(), 24),
+        createdAtThreshold: new Date(Date.now() - config.uploadWindowSeconds * 1000),
       });
 
       await deleteFiles(files.map((file) => file.id));
@@ -95,20 +105,19 @@ const buildServerUtils = <
         ],
       });
 
+      // Pass the raw row data; the storage adapter resolves its own object
+      // metadata from the declared `fields` (the core no longer does),
+      // so direct server uploads write the same metadata as the presigned flow.
+      const fieldValues = pickDeclaredFields(config.fields, params.data as Record<string, unknown>);
+
       await config.storageAdapter.uploadFile({
         key,
+        filename: params.data.filename,
         contentType: params.data.contentType,
         size: params.data.size,
         usageContext: params.data.usageContext,
         isPublic: params.data.isPublic,
-        // Resolve the typed `objectMetadata` from the row data so direct server
-        // uploads write the same object metadata as the presigned-upload flow.
-        // `params.data` carries `scope` and the declared custom fields; adding
-        // `key` completes the resolver's `ObjectMetadataInput`.
-        objectMetadata: config.objectMetadata?.({
-          ...params.data,
-          key,
-        } as ObjectMetadataInput<TFileUsageContext, TFields>),
+        fields: fieldValues,
         content: params.content,
       });
 
@@ -141,9 +150,9 @@ export type UploadStuff<
   __fileIdGenerator: FileIdGenerator;
   __fileKeyGenerator: FileKeyGenerator;
   __filePublicUrlGenerator: FilePublicUrlGenerator;
-  __objectMetadata: ObjectMetadataResolver<TFileUsageContext, TFields> | undefined;
   /** The declared custom-field declaration, used to filter persisted values. */
   __fields: TFields | undefined;
+  __uploadWindowSeconds: number;
 };
 
 /**
@@ -181,14 +190,16 @@ export const UploadStuff =
     },
   ): UploadStuff<TFileUsageContext, TFields> => {
     const {
-      storageAdapter,
-      databaseAdapter,
+      storageAdapter: storageAdapterFactory,
+      databaseAdapter: databaseAdapterFactory,
       fileIdGenerator = defaultFileIdGenerator,
       fileKeyGenerator = defaultFileKeyGenerator,
       filePublicUrlGenerator,
-      objectMetadata,
       fields,
+      uploadWindowSeconds,
     } = config;
+
+    const resolvedUploadWindowSeconds = resolveUploadWindowSeconds(uploadWindowSeconds);
 
     // Belt-and-suspenders to the type-level guard above: reject reserved field
     // names at runtime too, so a JS caller (or a cast) can't slip a custom field
@@ -208,6 +219,13 @@ export const UploadStuff =
       }
     }
 
+    // Resolve the adapter factories once, here — this is where each adapter
+    // receives the instance's inferred TFileUsageContext/TFields. The marker is
+    // type-only; adapters ignore it at runtime.
+    const typeInfo = {} as AdapterTypeInfo<TFileUsageContext, TFields>;
+    const storageAdapter = storageAdapterFactory(typeInfo);
+    const databaseAdapter = databaseAdapterFactory(typeInfo);
+
     return {
       $types: undefined as unknown as {
         fileUsageContext: TFileUsageContext;
@@ -220,8 +238,8 @@ export const UploadStuff =
         fileIdGenerator,
         fileKeyGenerator,
         filePublicUrlGenerator,
-        objectMetadata,
         fields,
+        uploadWindowSeconds: resolvedUploadWindowSeconds,
       }),
 
       __storageAdapter: storageAdapter,
@@ -230,7 +248,7 @@ export const UploadStuff =
       __fileIdGenerator: fileIdGenerator,
       __fileKeyGenerator: fileKeyGenerator,
       __filePublicUrlGenerator: filePublicUrlGenerator,
-      __objectMetadata: objectMetadata,
       __fields: fields,
+      __uploadWindowSeconds: resolvedUploadWindowSeconds,
     };
   };
