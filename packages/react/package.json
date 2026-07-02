@@ -1,7 +1,6 @@
 {
   "name": "@upload-stuff/react",
   "version": "0.0.0",
-  "private": true,
   "description": "React hooks for upload-stuff.",
   "keywords": [
     "file-upload",
