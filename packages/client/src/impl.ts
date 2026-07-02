@@ -26,14 +26,10 @@ import {
 import { compressImage } from "./compress-images";
 import { type EndpointArg, resolveEndpoint } from "./endpoint";
 import { mergeHeaders } from "./headers";
+import type { CreateUploadStuffClientOptions } from "./types";
 import { uploadFileWithProgress } from "./upload";
 
 /* oxlint-disable @typescript-eslint/no-explicit-any */
-
-export interface CreateUploadStuffClientOptions {
-  baseURL: string;
-  basePath?: string;
-}
 
 const getOptions = (options: CreateUploadStuffClientOptions) => {
   const { baseURL } = options;

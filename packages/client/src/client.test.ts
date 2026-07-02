@@ -1,0 +1,393 @@
+/* oxlint-disable @typescript-eslint/no-explicit-any */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { createUploadStuffClient } from "./client";
+import { MockXHR } from "./test/mock-xhr";
+
+const testRouteConfig = {
+  isPublic: true,
+  type: "image",
+  usageContext: "test",
+  maxFileSize: "4MB",
+};
+
+const testUploadPlan = {
+  batchToken: "batch-token-1",
+  files: [
+    {
+      id: "file-1",
+      key: "k1",
+      filename: "a.png",
+      contentType: "image/png",
+      size: 1000,
+      uploadUrl: "https://storage.example.com/put/1",
+      uploadHeaders: { "x-amz-meta-user": "u1" },
+    },
+  ],
+};
+
+const testCompleteResult = {
+  files: [
+    {
+      id: "file-1",
+      key: "k1",
+      filename: "a.png",
+      contentType: "image/png",
+      size: 1000,
+      publicUrl: "https://cdn.example.com/k1",
+    },
+  ],
+  serverData: { ok: true },
+};
+
+const jsonResponse = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+
+const mockFetch = ({
+  routeConfig = () => jsonResponse(testRouteConfig),
+  init = () => jsonResponse(testUploadPlan),
+  complete = () => jsonResponse(testCompleteResult),
+}: Partial<Record<"routeConfig" | "init" | "complete", (req: Request) => Response>> = {}) => {
+  const calls: { pathname: string; request: Request }[] = [];
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, requestInit?: RequestInit) => {
+    const request = new Request(input as any, requestInit);
+    const { pathname } = new URL(request.url);
+    calls.push({ pathname, request });
+    if (pathname.endsWith("/route-config")) return routeConfig(request);
+    if (pathname.endsWith("/init-upload")) return init(request);
+    if (pathname.endsWith("/complete-upload")) return complete(request);
+    throw new Error(`Unexpected fetch: ${pathname}`);
+  });
+  return { calls };
+};
+
+const makeClient = () => createUploadStuffClient<any>({ baseURL: "https://app.example.com" });
+
+const png = (size = 1000, name = "a.png") =>
+  new File([new Uint8Array(size)], name, { type: "image/png" });
+
+// Resolves once `count` XHRs exist — the PUT loop creates them asynchronously.
+const waitForXhrs = (count: number) =>
+  vi.waitFor(() => expect(MockXHR.instances.length).toBeGreaterThanOrEqual(count));
+
+beforeEach(() => {
+  MockXHR.reset();
+  vi.stubGlobal("XMLHttpRequest", MockXHR);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("uploadFiles — happy path", () => {
+  it("runs init → PUT → complete, returns the verified result, fires callbacks", async () => {
+    const { calls } = mockFetch();
+    const onClientUploadComplete = vi.fn();
+    const onUploadBegin = vi.fn();
+    const onUploadProgress = vi.fn();
+    const client = makeClient();
+
+    const p = client.uploadFiles("image", [png()], {
+      input: { caption: "hi" },
+      headers: { "x-user-id": "u1" },
+      uploadProgressGranularity: "all",
+      onClientUploadComplete,
+      onUploadBegin,
+      onUploadProgress,
+    });
+    await waitForXhrs(1);
+    const xhr = MockXHR.instances[0]!;
+    xhr.emitProgress(1000);
+    xhr.respond(200);
+
+    const result = await p;
+    expect(result).toEqual(testCompleteResult);
+    expect(onClientUploadComplete).toHaveBeenCalledWith(testCompleteResult);
+    expect(onUploadBegin).toHaveBeenCalledWith({ file: "a.png" });
+    // 0 fires right after init; the explicit 100 only fires on success.
+    expect(onUploadProgress.mock.calls[0]![0]).toBe(0);
+    expect(onUploadProgress.mock.calls.at(-1)![0]).toBe(100);
+
+    // Signed headers replayed on the PUT.
+    expect(xhr.requestHeaders["x-amz-meta-user"]).toBe("u1");
+
+    // Consumer headers reach both mutations; the init body carries input + file meta.
+    const initCall = calls.find((c) => c.pathname.endsWith("/init-upload"))!;
+    expect(initCall.request.headers.get("x-user-id")).toBe("u1");
+    await expect(initCall.request.json()).resolves.toEqual({
+      input: { caption: "hi" },
+      files: [{ filename: "a.png", contentType: "image/png", size: 1000 }],
+    });
+    const completeCall = calls.find((c) => c.pathname.endsWith("/complete-upload"))!;
+    expect(completeCall.request.headers.get("x-user-id")).toBe("u1");
+    await expect(completeCall.request.json()).resolves.toEqual({ batchToken: "batch-token-1" });
+  });
+
+  it("uploads multiple files sequentially with aggregate progress", async () => {
+    const twoFilePlan = {
+      batchToken: "batch-token-2",
+      files: [
+        { ...testUploadPlan.files[0]!, uploadUrl: "https://storage.example.com/put/1" },
+        {
+          ...testUploadPlan.files[0]!,
+          id: "file-2",
+          key: "k2",
+          filename: "b.png",
+          size: 400,
+          uploadUrl: "https://storage.example.com/put/2",
+        },
+      ],
+    };
+    mockFetch({ init: () => jsonResponse(twoFilePlan) });
+    const onUploadBegin = vi.fn();
+    const onUploadProgress = vi.fn();
+    const client = makeClient();
+
+    const p = client.uploadFiles("image", [png(600, "a.png"), png(400, "b.png")], {
+      uploadProgressGranularity: "coarse",
+      onUploadBegin,
+      onUploadProgress,
+    });
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.emitProgress(600);
+    MockXHR.instances[0]!.respond(200);
+    await waitForXhrs(2);
+    MockXHR.instances[1]!.emitProgress(400);
+    MockXHR.instances[1]!.respond(200);
+    await p;
+
+    expect(onUploadBegin.mock.calls.map(([a]) => a)).toEqual([{ file: "a.png" }, { file: "b.png" }]);
+    // 600/1000 → 60, then 1000/1000 → 100 (plus the leading 0 and final 100).
+    expect(onUploadProgress.mock.calls.map(([p]) => p)).toEqual([0, 60, 100, 100]);
+  });
+
+  it("onBeforeUploadBegin can replace the files that get uploaded", async () => {
+    const { calls } = mockFetch();
+    const client = makeClient();
+    const replacement = png(500, "compressed.png");
+
+    const p = client.uploadFiles("image", [png(1000, "original.png")], {
+      onBeforeUploadBegin: () => [replacement],
+    });
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await p;
+
+    const initCall = calls.find((c) => c.pathname.endsWith("/init-upload"))!;
+    await expect(initCall.request.json()).resolves.toEqual({
+      input: null,
+      files: [{ filename: "compressed.png", contentType: "image/png", size: 500 }],
+    });
+  });
+
+  it("allows two concurrent runs without cross-talk", async () => {
+    mockFetch();
+    const client = makeClient();
+    const progressA = vi.fn();
+    const progressB = vi.fn();
+
+    const pa = client.uploadFiles("image", [png()], { onUploadProgress: progressA });
+    const pb = client.uploadFiles("image", [png()], { onUploadProgress: progressB });
+    await waitForXhrs(2);
+    MockXHR.instances[0]!.respond(200);
+    MockXHR.instances[1]!.respond(200);
+    await Promise.all([pa, pb]);
+
+    expect(progressA.mock.calls.at(-1)![0]).toBe(100);
+    expect(progressB.mock.calls.at(-1)![0]).toBe(100);
+  });
+});
+
+describe("uploadFiles — route config", () => {
+  it("fetches route config on demand when not provided", async () => {
+    const { calls } = mockFetch();
+    const client = makeClient();
+    const p = client.uploadFiles("image", [png()]);
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await p;
+    expect(calls.some((c) => c.pathname.endsWith("/route-config"))).toBe(true);
+  });
+
+  it("skips the route-config fetch when the caller passes routeConfig", async () => {
+    const { calls } = mockFetch();
+    const client = makeClient();
+    const p = client.uploadFiles("image", [png()], { routeConfig: testRouteConfig as any });
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await p;
+    expect(calls.some((c) => c.pathname.endsWith("/route-config"))).toBe(false);
+  });
+
+  it("supports the (r) => r.route selector", async () => {
+    const { calls } = mockFetch();
+    const client = makeClient();
+    const p = client.uploadFiles((r: any) => r.image, [png()]);
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await p;
+    expect(calls[0]!.pathname).toContain("/image/");
+  });
+});
+
+describe("uploadFiles — failures", () => {
+  it("rejects on client-side validation failure before any request beyond route-config", async () => {
+    const { calls } = mockFetch();
+    const onUploadError = vi.fn();
+    const client = makeClient();
+    // 10MB file against the 4MB route limit.
+    await expect(
+      client.uploadFiles("image", [png(10 * 1024 * 1024)], { onUploadError }),
+    ).rejects.toThrow("exceeds maximum size");
+    expect(onUploadError).toHaveBeenCalledOnce();
+    expect(calls.some((c) => c.pathname.endsWith("/init-upload"))).toBe(false);
+    expect(MockXHR.instances).toHaveLength(0);
+  });
+
+  it("rejects when init fails; no PUT happens", async () => {
+    mockFetch({ init: () => jsonResponse({ error: "nope" }, 400) });
+    const onUploadError = vi.fn();
+    const client = makeClient();
+    await expect(client.uploadFiles("image", [png()], { onUploadError })).rejects.toThrow();
+    expect(onUploadError).toHaveBeenCalledOnce();
+    expect(MockXHR.instances).toHaveLength(0);
+  });
+
+  it("rejects when complete fails; onClientUploadComplete never fires", async () => {
+    mockFetch({ complete: () => jsonResponse({ error: "bad token" }, 500) });
+    const onUploadError = vi.fn();
+    const onClientUploadComplete = vi.fn();
+    const client = makeClient();
+    const p = client.uploadFiles("image", [png()], { onUploadError, onClientUploadComplete });
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await expect(p).rejects.toThrow();
+    expect(onUploadError).toHaveBeenCalledOnce();
+    expect(onClientUploadComplete).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty files array without invoking callbacks", async () => {
+    mockFetch();
+    const onUploadError = vi.fn();
+    const client = makeClient();
+    await expect(client.uploadFiles("image", [], { onUploadError })).rejects.toThrow(
+      "No files provided.",
+    );
+    expect(onUploadError).not.toHaveBeenCalled();
+  });
+});
+
+describe("uploadFiles — abort matrix", () => {
+  it("pre-start abort: reports onUploadAborted once, never onUploadError, no PUT", async () => {
+    const { calls } = mockFetch();
+    const onUploadAborted = vi.fn();
+    const onUploadError = vi.fn();
+    const controller = new AbortController();
+    controller.abort();
+    const client = makeClient();
+
+    await expect(
+      client.uploadFiles("image", [png()], {
+        signal: controller.signal,
+        onUploadAborted,
+        onUploadError,
+      }),
+    ).rejects.toThrow("Upload aborted.");
+    expect(onUploadAborted).toHaveBeenCalledOnce();
+    expect(onUploadError).not.toHaveBeenCalled();
+    expect(MockXHR.instances).toHaveLength(0);
+    expect(calls.some((c) => c.pathname.endsWith("/complete-upload"))).toBe(false);
+  });
+
+  it("mid-transfer abort: cancels the XHR, reports onUploadAborted once, no complete", async () => {
+    const { calls } = mockFetch();
+    const onUploadAborted = vi.fn();
+    const onUploadError = vi.fn();
+    const controller = new AbortController();
+    const client = makeClient();
+
+    const p = client.uploadFiles("image", [png()], {
+      signal: controller.signal,
+      onUploadAborted,
+      onUploadError,
+    });
+    await waitForXhrs(1);
+    controller.abort();
+
+    await expect(p).rejects.toThrow("Upload aborted");
+    expect(onUploadAborted).toHaveBeenCalledOnce();
+    expect(onUploadError).not.toHaveBeenCalled();
+    expect(MockXHR.instances[0]!.aborted).toBe(true);
+    expect(calls.some((c) => c.pathname.endsWith("/complete-upload"))).toBe(false);
+  });
+
+  it("abort between the last PUT and completion: aborts, never fires onClientUploadComplete", async () => {
+    const { calls } = mockFetch();
+    const onUploadAborted = vi.fn();
+    const onUploadError = vi.fn();
+    const onClientUploadComplete = vi.fn();
+    const controller = new AbortController();
+    const client = makeClient();
+
+    const p = client.uploadFiles("image", [png()], {
+      signal: controller.signal,
+      onUploadAborted,
+      onUploadError,
+      onClientUploadComplete,
+    });
+    await waitForXhrs(1);
+    // Resolve the PUT, then abort in the same tick — before the orchestration
+    // loop resumes. This is the window the abort listener still covers.
+    MockXHR.instances[0]!.respond(200);
+    controller.abort();
+
+    await expect(p).rejects.toThrow("Upload aborted.");
+    expect(onUploadAborted).toHaveBeenCalledOnce();
+    expect(onClientUploadComplete).not.toHaveBeenCalled();
+    expect(onUploadError).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.pathname.endsWith("/complete-upload"))).toBe(false);
+  });
+
+  it("abort after the transfer finished is ignored: completion proceeds", async () => {
+    const controller = new AbortController();
+    mockFetch({
+      complete: () => {
+        // Fire the abort while completion is in flight — the listener is
+        // already removed, so this must not cancel the batch.
+        controller.abort();
+        return jsonResponse(testCompleteResult);
+      },
+    });
+    const onUploadAborted = vi.fn();
+    const onClientUploadComplete = vi.fn();
+    const client = makeClient();
+
+    const p = client.uploadFiles("image", [png()], {
+      signal: controller.signal,
+      onUploadAborted,
+      onClientUploadComplete,
+    });
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+
+    await expect(p).resolves.toEqual(testCompleteResult);
+    expect(onUploadAborted).not.toHaveBeenCalled();
+    expect(onClientUploadComplete).toHaveBeenCalledOnce();
+  });
+});
+
+describe("fetchRouteConfig", () => {
+  it("returns the route config", async () => {
+    mockFetch();
+    const client = makeClient();
+    await expect(client.fetchRouteConfig("image")).resolves.toEqual(testRouteConfig);
+  });
+
+  it("rejects on a non-OK response", async () => {
+    mockFetch({ routeConfig: () => jsonResponse({ error: "unknown endpoint" }, 404) });
+    const client = makeClient();
+    await expect(client.fetchRouteConfig("missing")).rejects.toThrow();
+  });
+});
