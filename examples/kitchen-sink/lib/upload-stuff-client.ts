@@ -12,4 +12,4 @@ const client = createUploadStuffClient<FileRouter>({
   baseURL: typeof window !== "undefined" ? window.location.origin : "http://localhost:3000",
 });
 
-export const { useUploadStuff } = createUploadStuffReactHelpers<FileRouter>(client);
+export const { useUploadStuff } = createUploadStuffReactHelpers(client);

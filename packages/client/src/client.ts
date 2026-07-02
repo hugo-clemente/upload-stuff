@@ -32,14 +32,16 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
   options: CreateUploadStuffClientOptions,
 ) => {
   const basePath = options.basePath ?? DEFAULT_BASE_PATH;
-  const client = hc<UploadStuffHTTPServerType>(new URL(basePath, options.baseURL).toString());
+  const honoClient = hc<UploadStuffHTTPServerType>(
+    new URL(basePath, options.baseURL).toString(),
+  );
 
   const fetchRouteConfig = async <TEndpoint extends keyof TFileRouter>(
     endpoint: EndpointArg<TFileRouter, TEndpoint>,
   ): Promise<TFileRouter[TEndpoint]["routeConfig"]> => {
     const resolved = resolveEndpoint<TFileRouter, TEndpoint>(endpoint);
     return (await parseResponse(
-      client[":endpoint"]["route-config"].$get({ param: { endpoint: resolved as string } }),
+      honoClient[":endpoint"]["route-config"].$get({ param: { endpoint: resolved as string } }),
     )) as TFileRouter[TEndpoint]["routeConfig"];
   };
 
@@ -78,7 +80,7 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
       validateFiles(meta, routeConfig);
 
       const uploadPlan = (await parseResponse(
-        client[":endpoint"]["init-upload"].$post(
+        honoClient[":endpoint"]["init-upload"].$post(
           {
             param: { endpoint: resolved },
             json: { input: opts.input ?? null, files: meta },
@@ -153,7 +155,7 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
       }
 
       const verified = (await parseResponse(
-        client[":endpoint"]["complete-upload"].$post(
+        honoClient[":endpoint"]["complete-upload"].$post(
           {
             param: { endpoint: resolved },
             json: { batchToken: uploadPlan.batchToken },
@@ -181,7 +183,12 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
     }
   };
 
-  return { fetchRouteConfig, uploadFiles };
+  const client = { fetchRouteConfig, uploadFiles };
+  // Phantom marker (never set at runtime): carries TFileRouter in a directly
+  // inferable position so framework bindings can infer the router from the
+  // instance — inference cannot see type parameters that only appear inside
+  // generic method signatures.
+  return client as typeof client & { "~router"?: TFileRouter };
 };
 
 export type UploadStuffClient<TFileRouter extends UploadStuffRouter> = ReturnType<

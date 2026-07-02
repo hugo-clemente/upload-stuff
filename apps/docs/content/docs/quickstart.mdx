@@ -132,8 +132,9 @@ export const { GET, POST } = toNextJsHandler({
 ### Create the client helpers and upload
 
 <Callout title="This file is the type bridge">
-Passing your server's `FileRouter` type to `createUploadStuffReactHelpers` is what
-connects the two ends — every type the client hook infers flows from this one
+Passing your server's `FileRouter` type to `createUploadStuffClient` is what
+connects the two ends — `createUploadStuffReactHelpers` infers it back from the
+`client` instance, so every type the client hook exposes flows from this one
 import. See [Type safety](/docs/type-safety) for what that buys you.
 </Callout>
 
@@ -149,7 +150,7 @@ const client = createUploadStuffClient<FileRouter>({
   baseURL: process.env.NEXT_PUBLIC_APP_URL!,
 });
 
-export const { useUploadStuff } = createUploadStuffReactHelpers<FileRouter>(client);
+export const { useUploadStuff } = createUploadStuffReactHelpers(client);
 ```
 
 ```tsx
