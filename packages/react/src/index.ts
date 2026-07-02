@@ -1,14 +1,14 @@
 /* oxlint-disable @typescript-eslint/no-explicit-any */
-import { useCallback, useMemo, useRef, useState } from "react";
-
-import useSWR from "swr";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 
 import type {
   AnyFileRoute,
   CompleteUploadResult,
   EndpointArg,
+  ExternalStore,
   RouteConfig,
   UploadCallbacks,
+  UploadController,
   UploadStuffClient,
   UploadStuffRouter,
   inferRouteInput,
@@ -58,17 +58,35 @@ export type UseUploadStuffReturn<TRoute extends AnyFileRoute> = {
    * Are files currently being uploaded?
    */
   isUploading: boolean;
+  /**
+   * Whole-run progress percent (0–100), throttled by
+   * `uploadProgressGranularity`.
+   */
+  progress: number;
+  /**
+   * Abort the in-flight upload. No-op when idle.
+   */
+  abort: () => void;
   routeConfig?: RouteConfig<TRoute["$types"]["fileUsageContext"]>;
   accept?: string;
 };
 
+const useStore = <S,>(store: ExternalStore<S>): S =>
+  useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
+
 export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRouter>(
   client: UploadStuffClient<TFileRouter>,
 ) => {
-  const useRouteConfig = <TEndpoint extends keyof TFileRouter>(endpoint: TEndpoint) =>
-    useSWR(`upload-stuff/${endpoint as string}/route-config`, () =>
-      client.fetchRouteConfig(endpoint),
-    );
+  const useRouteConfig = <TEndpoint extends keyof TFileRouter>(endpoint: TEndpoint) => {
+    // Handles are memoized per resolved endpoint in the engine — stable
+    // identity across renders without useMemo.
+    const handle = client.routeConfig(endpoint);
+    const snapshot = useStore(handle.store);
+    const refetch = useCallback(() => {
+      void handle.load().catch(() => {});
+    }, [handle]);
+    return { data: snapshot.data, error: snapshot.error, isLoading: snapshot.isLoading, refetch };
+  };
 
   const useUploadStuff = <
     TEndpoint extends keyof TFileRouter,
@@ -77,17 +95,33 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
     endpoint: EndpointArg<TFileRouter, TEndpoint>,
     opts?: UseUploadStuffOptions<TRoute>,
   ): UseUploadStuffReturn<TRoute> => {
-    const [isUploading, setIsUploading] = useState(false);
-    // Synchronous double-submit guard: `isUploading` state lands on the next
-    // render, so a second startUpload in the same tick would otherwise start
-    // a second engine run.
-    const isUploadingRef = useRef(false);
-
     const resolvedEndpoint = useMemo(
       () => resolveEndpoint<TFileRouter, TEndpoint>(endpoint),
       [endpoint],
     );
 
+    // Controller identity must survive re-renders for the whole upload run,
+    // so it lives in state (useMemo may legally discard its cache). Keyed on
+    // the resolved endpoint: changing endpoints rebinds to a fresh idle
+    // controller and detaches the old run (its callbacks still fire).
+    const [box, setBox] = useState(() => ({
+      endpoint: resolvedEndpoint,
+      controller: client.createUpload<TEndpoint>(resolvedEndpoint),
+    }));
+    if (box.endpoint !== resolvedEndpoint) {
+      setBox({
+        endpoint: resolvedEndpoint,
+        controller: client.createUpload<TEndpoint>(resolvedEndpoint),
+      });
+    }
+    // `unknown` intermediary: `UploadController<T>` mixes T co- and
+    // contravariantly (start()'s params vs getSnapshot()'s return), so a
+    // direct `as UploadController<TRoute>` doesn't type-check even though
+    // TRoute is constrained to TFileRouter[TEndpoint] — the actual shape
+    // returned by client.createUpload above.
+    const controller = box.controller as unknown as UploadController<TRoute>;
+
+    const uploadSnapshot = useStore(controller);
     const { data: routeConfig, isLoading } = useRouteConfig(resolvedEndpoint);
 
     const accept = useMemo(
@@ -96,32 +130,21 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
     );
 
     const startUpload = useCallback(
-      (async (files: File[], input: any, runOpts?: StartUploadFnOptions) => {
-        if (isUploadingRef.current) {
-          throw new Error("An upload is already in progress");
-        }
-        isUploadingRef.current = true;
-        setIsUploading(true);
-        try {
-          return await client.uploadFiles(resolvedEndpoint, files, {
-            ...opts,
-            input,
-            // SWR's copy — may still be undefined, the engine then fetches it.
-            routeConfig,
-            signal: runOpts?.signal,
-            headers: mergeHeaders(opts?.headers, runOpts?.headers),
-          } as any);
-        } finally {
-          isUploadingRef.current = false;
-          setIsUploading(false);
-        }
-      }) as StartUploadFn<TRoute>,
-      [opts, routeConfig, resolvedEndpoint],
+      (async (files: File[], input: any, runOpts?: StartUploadFnOptions) =>
+        controller.start(files, {
+          ...opts,
+          input,
+          signal: runOpts?.signal,
+          headers: mergeHeaders(opts?.headers, runOpts?.headers),
+        } as any)) as StartUploadFn<TRoute>,
+      [opts, controller],
     );
 
     return {
       startUpload,
-      isUploading,
+      isUploading: uploadSnapshot.status === "uploading",
+      progress: uploadSnapshot.progressPercent,
+      abort: controller.abort,
       routeConfig,
       accept,
       isLoading,
