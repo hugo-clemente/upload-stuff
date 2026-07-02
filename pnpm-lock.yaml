@@ -172,9 +172,6 @@ importers:
       ts-pattern:
         specifier: 5.9.0
         version: 5.9.0
-      type-fest:
-        specifier: ^4.41.0
-        version: 4.41.0
     devDependencies:
       '@upload-stuff/server':
         specifier: workspace:*

@@ -37,8 +37,7 @@
     "@upload-stuff/core": "workspace:*",
     "browser-image-compression": "^2.0.2",
     "hono": "^4.10.7",
-    "ts-pattern": "5.9.0",
-    "type-fest": "^4.41.0"
+    "ts-pattern": "5.9.0"
   },
   "devDependencies": {
     "@upload-stuff/server": "workspace:*",
