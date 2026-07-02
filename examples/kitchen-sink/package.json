@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "db:push": "prisma db push",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
