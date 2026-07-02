@@ -1,13 +1,12 @@
 {
   "name": "@upload-stuff/client",
   "version": "0.1.0",
-  "description": "React hooks and helpers for upload-stuff.",
+  "description": "Framework-free upload engine for upload-stuff.",
   "keywords": [
     "file-upload",
-    "hooks",
-    "react",
-    "swr",
-    "upload"
+    "upload",
+    "s3",
+    "presigned-url"
   ],
   "license": "MIT",
   "repository": {
@@ -38,16 +37,11 @@
     "@upload-stuff/core": "workspace:*",
     "browser-image-compression": "^2.0.2",
     "hono": "^4.10.7",
-    "swr": "^2.3.7",
     "ts-pattern": "5.9.0",
     "type-fest": "^4.41.0"
   },
   "devDependencies": {
-    "@types/react": "19.2.2",
     "@upload-stuff/server": "workspace:*",
     "typescript": "5.9.3"
-  },
-  "peerDependencies": {
-    "react": ">=19"
   }
 }
