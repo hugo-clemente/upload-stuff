@@ -24,7 +24,8 @@ import type {
   DatabaseAdapter,
   inferRouteServerData,
 } from "@upload-stuff/server";
-import { createUploadStuffReactHelpers } from "@upload-stuff/client";
+import { createUploadStuffClient } from "@upload-stuff/client";
+import { createUploadStuffReactHelpers } from "@upload-stuff/react";
 import { z } from "zod";
 
 type FileUsageContext = "avatar" | "document";
@@ -63,9 +64,10 @@ type MiddlewareData = FileRouter["avatar"]["$types"]["middlewareData"];
 //   ^?
 
 // ---- Client: the hook infers everything from `FileRouter` ----
-const { useUploadStuff } = createUploadStuffReactHelpers<FileRouter>({
+const client = createUploadStuffClient<FileRouter>({
   baseURL: "https://example.com",
 });
+const { useUploadStuff } = createUploadStuffReactHelpers<FileRouter>(client);
 
 useUploadStuff((r) => r.avatar, {
   onClientUploadComplete: (res) => {
@@ -92,7 +94,8 @@ at runtime become compile errors instead. These two fail to build:
 // @errors: 2339 2551
 import { UploadStuff, createUploadStuffRouter } from "@upload-stuff/server";
 import type { StorageAdapter, DatabaseAdapter } from "@upload-stuff/server";
-import { createUploadStuffReactHelpers } from "@upload-stuff/client";
+import { createUploadStuffClient } from "@upload-stuff/client";
+import { createUploadStuffReactHelpers } from "@upload-stuff/react";
 
 type FileUsageContext = "avatar";
 declare const storageAdapter: StorageAdapter;
@@ -117,9 +120,10 @@ const fileRouter = {
     .build(),
 };
 
-const { useUploadStuff } = createUploadStuffReactHelpers<typeof fileRouter>({
+const client = createUploadStuffClient<typeof fileRouter>({
   baseURL: "https://example.com",
 });
+const { useUploadStuff } = createUploadStuffReactHelpers<typeof fileRouter>(client);
 
 // Misspelled route name — the selector is type-checked against the router:
 useUploadStuff((r) => r.avatr);

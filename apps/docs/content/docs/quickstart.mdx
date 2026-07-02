@@ -30,7 +30,7 @@ still follow the concepts below — only the handler wiring is Next-specific.
 Install the packages:
 
 ```sh
-npm install @upload-stuff/server @upload-stuff/client
+npm install @upload-stuff/server @upload-stuff/client @upload-stuff/react
 ```
 
 <Steps>
@@ -141,12 +141,15 @@ import. See [Type safety](/docs/type-safety) for what that buys you.
 // lib/upload-stuff-client.ts
 "use client";
 
-import { createUploadStuffReactHelpers } from "@upload-stuff/client";
+import { createUploadStuffClient } from "@upload-stuff/client";
+import { createUploadStuffReactHelpers } from "@upload-stuff/react";
 import type { FileRouter } from "@/lib/file-router";
 
-export const { useUploadStuff } = createUploadStuffReactHelpers<FileRouter>({
+const client = createUploadStuffClient<FileRouter>({
   baseURL: process.env.NEXT_PUBLIC_APP_URL!,
 });
+
+export const { useUploadStuff } = createUploadStuffReactHelpers<FileRouter>(client);
 ```
 
 ```tsx

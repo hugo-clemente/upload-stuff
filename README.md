@@ -7,7 +7,8 @@ A file-upload library built on presigned S3 uploads, a typed [Hono](https://hono
 | Package                | Description                                                               |
 | ---------------------- | ------------------------------------------------------------------------- |
 | `@upload-stuff/server` | Server runtime (Hono), Next.js App Router handler, S3 and Prisma adapters |
-| `@upload-stuff/client` | React hooks and helpers                                                   |
+| `@upload-stuff/client` | Framework-free upload engine (validation, presigned PUT, progress, abort) |
+| `@upload-stuff/react`  | React hooks over the engine                                               |
 | `@upload-stuff/core`   | Isomorphic types, Zod schemas, errors and utils (comes transitively)      |
 
 All packages are ESM-only.
@@ -21,6 +22,9 @@ pnpm add @upload-stuff/server
 # Frontend
 pnpm add @upload-stuff/client
 
+# React bindings
+pnpm add @upload-stuff/react
+
 # @upload-stuff/core is a transitive dependency — no need to install it directly
 ```
 
@@ -28,6 +32,7 @@ pnpm add @upload-stuff/client
 # npm
 npm install @upload-stuff/server
 npm install @upload-stuff/client
+npm install @upload-stuff/react
 ```
 
 ## Server usage
@@ -158,13 +163,15 @@ export const { GET, POST } = toNextJsHandler({
 // lib/upload-stuff-client.ts
 "use client";
 
-import { createUploadStuffReactHelpers } from "@upload-stuff/client";
+import { createUploadStuffClient } from "@upload-stuff/client";
+import { createUploadStuffReactHelpers } from "@upload-stuff/react";
 import type { FileRouter } from "@/lib/file-router";
 
-export const { useUploadStuff } = createUploadStuffReactHelpers<FileRouter>({
+const client = createUploadStuffClient<FileRouter>({
   baseURL: process.env.NEXT_PUBLIC_APP_URL!,
-  // basePath defaults to "/api/upload-stuff"
 });
+
+export const { useUploadStuff } = createUploadStuffReactHelpers<FileRouter>(client);
 ```
 
 ### Use in a component
@@ -201,7 +208,7 @@ export function AvatarUpload() {
 }
 ```
 
-`createUploadStuffReactHelpers` returns `{ useUploadStuff, useRouteConfig }`.
+`createUploadStuffReactHelpers(client)` returns `{ useUploadStuff, useRouteConfig }`; create `client` once with `createUploadStuffClient<FileRouter>(...)` from `@upload-stuff/client`.
 
 `useUploadStuff` returns `{ startUpload, isUploading, isLoading, routeConfig, accept }`.
 

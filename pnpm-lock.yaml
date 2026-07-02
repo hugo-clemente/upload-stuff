@@ -26,6 +26,9 @@ importers:
       '@upload-stuff/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@upload-stuff/react':
+        specifier: workspace:*
+        version: link:../../packages/react
       '@upload-stuff/server':
         specifier: workspace:*
         version: link:../../packages/server
@@ -117,6 +120,9 @@ importers:
       '@upload-stuff/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@upload-stuff/react':
+        specifier: workspace:*
+        version: link:../../packages/react
       '@upload-stuff/server':
         specifier: workspace:*
         version: link:../../packages/server
