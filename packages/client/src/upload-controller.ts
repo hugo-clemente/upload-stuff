@@ -174,7 +174,12 @@ export const createUploadController = <TRoute extends AnyFileRoute>(
 ): UploadController<TRoute> => {
   const initial: UploadSnapshot<TRoute> = { status: "idle", progressPercent: 0 };
   const store = createStore<UploadSnapshot<TRoute>>(initial);
-  let activeAbort: AbortController | undefined;
+  // Per-run identity: snapshot transitions fire before user callbacks, so a
+  // terminal callback (onClientUploadComplete/onUploadError/onUploadAborted)
+  // may synchronously call start() again before the old run's frame has
+  // unwound. The old run's safety-net catch/finally must recognize it's no
+  // longer the active run and leave the new run's state alone.
+  let activeRun: { abortController: AbortController } | undefined;
 
   const start = async (files: File[], ...args: UploadFilesArgs<TRoute>) => {
     if (store.getSnapshot().status === "uploading") {
@@ -183,8 +188,9 @@ export const createUploadController = <TRoute extends AnyFileRoute>(
     }
     const opts = (args[0] ?? {}) as UploadFilesOptions<AnyFileRoute> & { input?: any };
 
-    const abortController = new AbortController();
-    activeAbort = abortController;
+    const run = { abortController: new AbortController() };
+    activeRun = run;
+    const { abortController } = run;
     const callerSignal = opts.signal;
     let onCallerAbort: (() => void) | undefined;
     if (callerSignal) {
@@ -232,8 +238,11 @@ export const createUploadController = <TRoute extends AnyFileRoute>(
       >;
     } catch (e) {
       // Rejections that bypass the callbacks (e.g. empty files) must still
-      // settle the status.
-      if (store.getSnapshot().status === "uploading") {
+      // settle the status — but only if this run is still the active one;
+      // a terminal callback may have synchronously started a new run while
+      // this frame was unwinding, and that run's snapshot must not be
+      // touched.
+      if (activeRun === run && store.getSnapshot().status === "uploading") {
         transition({
           status: abortController.signal.aborted ? "aborted" : "error",
           error: e instanceof Error ? e : new Error(String(e)),
@@ -242,13 +251,13 @@ export const createUploadController = <TRoute extends AnyFileRoute>(
       throw e;
     } finally {
       if (callerSignal && onCallerAbort) callerSignal.removeEventListener("abort", onCallerAbort);
-      activeAbort = undefined;
+      if (activeRun === run) activeRun = undefined;
     }
   };
 
   // Defined by equivalence with a caller signal firing at this moment —
   // including the ignored-late-abort boundary. No-op when not uploading.
-  const abort = () => activeAbort?.abort();
+  const abort = () => activeRun?.abortController.abort();
 
   return {
     subscribe: store.subscribe,

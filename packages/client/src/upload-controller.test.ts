@@ -2,7 +2,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { MockXHR } from "./test/mock-xhr";
-import { jsonResponse, mockFetch, png, testCompleteResult, testRouteConfig, waitForXhrs } from "./test/harness";
+import {
+  jsonResponse,
+  mockFetch,
+  png,
+  testCompleteResult,
+  testRouteConfig,
+  testUploadPlan,
+  waitForXhrs,
+} from "./test/harness";
 import { createUploadStuffClient } from "./client";
 
 const makeClient = () => createUploadStuffClient<any>({ baseURL: "https://app.example.com" });
@@ -199,5 +207,57 @@ describe("shared route-config cache", () => {
     MockXHR.instances[0]!.respond(200);
     await p;
     expect(calls.some((c) => c.pathname.endsWith("/route-config"))).toBe(false);
+  });
+});
+
+describe("createUpload — synchronous restart from terminal callbacks", () => {
+  it("a start() from onClientUploadComplete keeps the new run alive and abortable", async () => {
+    mockFetch();
+    const upload = makeClient().createUpload("image");
+    let second: Promise<unknown> | undefined;
+    const first = upload.start([png()], {
+      onClientUploadComplete: () => {
+        second = upload.start([png()], { onUploadAborted: () => {} } as any);
+        second.catch(() => {});
+      },
+    } as any);
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await first;
+
+    // The old run's unwinding frames must not have stomped the new run.
+    expect(upload.getSnapshot().status).toBe("uploading");
+
+    // abort() must still control the NEW run.
+    await waitForXhrs(2);
+    upload.abort();
+    await expect(second!).rejects.toThrow("Upload aborted");
+    expect(upload.getSnapshot().status).toBe("aborted");
+    expect(MockXHR.instances[1]!.aborted).toBe(true);
+  });
+
+  it("a start() from onUploadError is not stomped by the failing run's catch", async () => {
+    mockFetch({
+      init: (() => {
+        let n = 0;
+        return () => (n++ === 0 ? jsonResponse({ error: "nope" }, 400) : jsonResponse(testUploadPlan));
+      })(),
+    });
+    const upload = makeClient().createUpload("image");
+    let second: Promise<unknown> | undefined;
+    const first = upload.start([png()], {
+      onUploadError: () => {
+        second = upload.start([png()]);
+        second.catch(() => {});
+      },
+    } as any);
+    await expect(first).rejects.toThrow();
+
+    // The failed run's safety-net catch must not overwrite the new run's status.
+    expect(upload.getSnapshot().status).toBe("uploading");
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await expect(second!).resolves.toEqual(testCompleteResult);
+    expect(upload.getSnapshot().status).toBe("success");
   });
 });
