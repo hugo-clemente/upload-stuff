@@ -213,7 +213,7 @@ describe("useRouteConfig", () => {
     expect(result.current.error).toBeUndefined();
   });
 
-  it("exposes refetch, which calls the handle's load", async () => {
+  it("exposes refetch, which forces the handle's load", async () => {
     const { client, handles } = makeClient();
     const { useRouteConfig } = createUploadStuffReactHelpers<any>(client);
     const { result } = renderHook(() => useRouteConfig("image"));
@@ -221,6 +221,6 @@ describe("useRouteConfig", () => {
     act(() => {
       result.current.refetch();
     });
-    expect(handles.get("image")!.load).toHaveBeenCalled();
+    expect(handles.get("image")!.load).toHaveBeenCalledWith({ force: true });
   });
 });

@@ -82,8 +82,12 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
     // identity across renders without useMemo.
     const handle = client.routeConfig(endpoint);
     const snapshot = useStore(handle.store);
+    // Forced, fire-and-forget: failures surface via the snapshot only when
+    // there was nothing cached yet (first load); a forced refresh that
+    // fails keeps serving the stale snapshot by design, so there is
+    // nothing further for this callback to do with the rejection.
     const refetch = useCallback(() => {
-      void handle.load().catch(() => {});
+      void handle.load({ force: true }).catch(() => {});
     }, [handle]);
     return { data: snapshot.data, error: snapshot.error, isLoading: snapshot.isLoading, refetch };
   };

@@ -126,3 +126,62 @@ describe("createRouteConfigCache", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 });
+
+describe("createRouteConfigCache — forced loads", () => {
+  const freshConfig = { isPublic: true, type: "image", usageContext: "t2", maxFileSize: "8MB" } as const;
+
+  it("force after success starts a fresh fetch and swaps in the new data", async () => {
+    const { fetcher, pending } = deferredFetcher();
+    const handle = createRouteConfigCache(fetcher)("image");
+    const p1 = handle.load();
+    pending[0]!.resolve(config);
+    await p1;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    const before = handle.store.getSnapshot();
+    const p2 = handle.load({ force: true });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    // Silent background refresh: snapshot untouched while the forced fetch runs.
+    expect(handle.store.getSnapshot()).toBe(before);
+    expect(handle.store.getSnapshot()).toEqual({ data: config, isLoading: false });
+
+    pending[1]!.resolve(freshConfig);
+    await expect(p2).resolves.toEqual(freshConfig);
+    expect(handle.store.getSnapshot()).toEqual({ data: freshConfig, isLoading: false });
+    expect(handle.store.getSnapshot()).not.toBe(before);
+  });
+
+  it("force joins an in-flight fetch instead of duplicating it", async () => {
+    const { fetcher, pending } = deferredFetcher();
+    const handle = createRouteConfigCache(fetcher)("image");
+    const p1 = handle.load();
+    const p2 = handle.load({ force: true });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    pending[0]!.resolve(config);
+    await expect(p1).resolves.toEqual(config);
+    await expect(p2).resolves.toEqual(config);
+  });
+
+  it("forced failure with cached data leaves the snapshot untouched but rejects, and a later force can retry", async () => {
+    const { fetcher, pending } = deferredFetcher();
+    const handle = createRouteConfigCache(fetcher)("image");
+    const p1 = handle.load();
+    pending[0]!.resolve(config);
+    await p1;
+
+    const before = handle.store.getSnapshot();
+    const p2 = handle.load({ force: true });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    pending[1]!.reject(new Error("refresh failed"));
+    await expect(p2).rejects.toThrow("refresh failed");
+    // Stale config beats an error for UI purposes: exact same reference.
+    expect(handle.store.getSnapshot()).toBe(before);
+
+    // A later forced attempt can retry (in-flight slot cleared).
+    const p3 = handle.load({ force: true });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    pending[2]!.resolve(freshConfig);
+    await expect(p3).resolves.toEqual(freshConfig);
+    expect(handle.store.getSnapshot()).toEqual({ data: freshConfig, isLoading: false });
+  });
+});
