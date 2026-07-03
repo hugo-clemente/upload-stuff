@@ -9,87 +9,51 @@ import { createUploadStuffReactHelpers } from "./index";
 const routeConfig = { isPublic: true, type: "image", usageContext: "test", maxFileSize: "4MB" };
 const completeResult = { files: [], serverData: null };
 
-const fakeStore = <S,>(initial: S) => {
-  let snapshot = initial;
-  const listeners = new Set<() => void>();
-  return {
-    subscribe: (l: () => void) => {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
-    getSnapshot: () => snapshot,
-    getServerSnapshot: () => initial,
-    set: (next: S) => {
-      snapshot = next;
-      listeners.forEach((l) => l());
-    },
-  };
+type PendingUpload = {
+  endpoint: string;
+  files: File[];
+  options: any;
+  resolve: (v: unknown) => void;
+  reject: (e: Error) => void;
 };
 
-const fakeHandle = () => {
-  const store = fakeStore<{ data?: typeof routeConfig; error?: Error; isLoading: boolean }>({
-    isLoading: true,
-  });
-  return {
-    store,
-    load: vi.fn(async () => {
-      store.set({ data: routeConfig, isLoading: false });
-      return routeConfig;
-    }),
-    // subscribe-triggered load, like the real handle
-    handle: {
-      load: undefined as any,
-      store: {
-        ...store,
-        subscribe: (l: () => void) => {
-          if (!store.getSnapshot().data) {
-            store.set({ data: routeConfig, isLoading: false });
-          }
-          return store.subscribe(l);
-        },
-      },
-    },
-  };
-};
-
-const fakeController = () => {
-  const store = fakeStore<{ status: string; progressPercent: number; result?: unknown; error?: Error }>(
-    { status: "idle", progressPercent: 0 },
-  );
-  const start = vi.fn(async () => {
-    store.set({ status: "uploading", progressPercent: 0 });
-    return completeResult;
-  });
-  return { store, start, abort: vi.fn(), controller: { ...store, start, abort: vi.fn() } };
-};
-
+// A fake engine: uploads stay pending until the test drives them, and the
+// captured options let tests fire the engine's callbacks in the same order
+// the real orchestration does (terminal callback before the promise settles).
 const makeClient = () => {
-  const controllers = new Map<string, ReturnType<typeof fakeController>>();
-  const handles = new Map<string, ReturnType<typeof fakeHandle>>();
-  const client = {
-    routeConfig: vi.fn((endpoint: string) => {
-      if (!handles.has(endpoint)) {
-        const h = fakeHandle();
-        h.handle.load = h.load;
-        handles.set(endpoint, h);
-      }
-      return handles.get(endpoint)!.handle;
-    }),
-    createUpload: vi.fn((endpoint: string) => {
-      const c = fakeController();
-      controllers.set(endpoint, c);
-      return c.controller;
-    }),
-    fetchRouteConfig: vi.fn(async () => routeConfig),
-    uploadFiles: vi.fn(async () => completeResult),
+  const uploads: PendingUpload[] = [];
+  const mock = {
+    getRouteConfig: vi.fn(async () => routeConfig),
+    uploadFiles: vi.fn(
+      (endpoint: string, files: File[], options: any) =>
+        new Promise((resolve, reject) => {
+          uploads.push({ endpoint, files, options, resolve, reject });
+        }),
+    ),
   };
-  return { client: client as unknown as UploadStuffClient<any>, controllers, handles };
+  return { client: mock as unknown as UploadStuffClient<any>, mock, uploads };
+};
+
+const finishUpload = (u: PendingUpload, result: unknown = completeResult) => {
+  u.options.onUploadProgress?.(100);
+  u.options.onClientUploadComplete?.(result);
+  u.resolve(result);
+};
+
+const failUpload = (u: PendingUpload, error = new Error("boom")) => {
+  u.options.onUploadError?.(error);
+  u.reject(error);
+};
+
+const abortUpload = (u: PendingUpload) => {
+  u.options.onUploadAborted?.();
+  u.reject(new Error("Upload aborted."));
 };
 
 const png = () => new File([new Uint8Array(10)], "a.png", { type: "image/png" });
 
 describe("useUploadStuff", () => {
-  it("loads route config through the handle store and derives accept", async () => {
+  it("loads the route config and derives accept", async () => {
     const { client } = makeClient();
     const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
     const { result } = renderHook(() => useUploadStuff("image"));
@@ -98,8 +62,8 @@ describe("useUploadStuff", () => {
     expect(typeof result.current.accept).toBe("string");
   });
 
-  it("derives isUploading and progress from the controller snapshot", async () => {
-    const { client, controllers } = makeClient();
+  it("tracks isUploading and progress across a run", async () => {
+    const { client, uploads } = makeClient();
     const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
     const { result } = renderHook(() => useUploadStuff("image"));
     await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -107,76 +71,221 @@ describe("useUploadStuff", () => {
     expect(result.current.isUploading).toBe(false);
     expect(result.current.progress).toBe(0);
 
+    let p: Promise<unknown> | undefined;
     act(() => {
-      controllers.get("image")!.store.set({ status: "uploading", progressPercent: 40 });
+      p = result.current.startUpload([png()]);
     });
     expect(result.current.isUploading).toBe(true);
-    expect(result.current.progress).toBe(40);
+    expect(result.current.progress).toBe(0);
 
     act(() => {
-      controllers.get("image")!.store.set({ status: "success", progressPercent: 100 });
+      uploads[0]!.options.onUploadProgress(40);
+    });
+    expect(result.current.progress).toBe(40);
+
+    await act(async () => {
+      finishUpload(uploads[0]!);
+      await p;
     });
     expect(result.current.isUploading).toBe(false);
     expect(result.current.progress).toBe(100);
   });
 
-  it("startUpload forwards merged headers, per-call signal and input to controller.start", async () => {
-    const { client, controllers } = makeClient();
+  it("forwards input and merged headers; does not pass routeConfig through", async () => {
+    const { client, uploads } = makeClient();
     const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
-    const abortController = new AbortController();
     const { result } = renderHook(() =>
       useUploadStuff("image", { headers: { "x-a": "hook", "x-b": "hook" } }),
     );
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    await act(async () => {
+    act(() => {
       // `as any`: StartUploadFn<any> deterministically resolves to its
       // no-input branch (TS collapses the tuple-wrapped any-check to the
       // `undefined`-input signature — see the StartUploadFn comment in
       // ./index.ts), so an actual input value only type-checks against a
       // concrete route. This test exercises the runtime forwarding, not
       // the arity typing (that's index.test-d.ts's job).
-      await result.current.startUpload([png()], { caption: "hi" } as any, {
-        headers: { "x-b": "call" },
-        signal: abortController.signal,
-      });
+      void result.current
+        .startUpload([png()], { caption: "hi" } as any, { headers: { "x-b": "call" } })
+        .catch(() => {});
     });
 
-    const start = controllers.get("image")!.start;
-    const [files, options] = start.mock.calls[0]! as any[];
-    expect(files).toHaveLength(1);
-    expect(options.input).toEqual({ caption: "hi" });
-    expect(options.signal).toBe(abortController.signal);
-    expect(options.headers).toEqual({ "x-a": "hook", "x-b": "call" });
+    const u = uploads[0]!;
+    expect(u.endpoint).toBe("image");
+    expect(u.files).toHaveLength(1);
+    expect(u.options.input).toEqual({ caption: "hi" });
+    expect(u.options.headers).toEqual({ "x-a": "hook", "x-b": "call" });
     // Shared cache in the engine — the hook must NOT pass routeConfig through.
-    expect(options.routeConfig).toBeUndefined();
+    expect(u.options.routeConfig).toBeUndefined();
   });
 
-  it("returns the controller's result from startUpload", async () => {
-    const { client } = makeClient();
+  it("returns the engine's result from startUpload", async () => {
+    const { client, uploads } = makeClient();
     const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
     const { result } = renderHook(() => useUploadStuff("image"));
     await waitFor(() => expect(result.current.isLoading).toBe(false));
+
     let res: unknown;
     await act(async () => {
-      res = await result.current.startUpload([png()]);
+      const p = result.current.startUpload([png()]);
+      finishUpload(uploads[0]!);
+      res = await p;
     });
     expect(res).toEqual(completeResult);
   });
 
-  it("exposes the controller's abort", async () => {
-    const { client, controllers } = makeClient();
+  it("a caller signal aborts the run's composed signal", async () => {
+    const { client, uploads } = makeClient();
+    const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
+    const abortController = new AbortController();
+    const { result } = renderHook(() => useUploadStuff("image"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      void result.current
+        .startUpload([png()], undefined, { signal: abortController.signal })
+        .catch(() => {});
+    });
+    expect(uploads[0]!.options.signal.aborted).toBe(false);
+    abortController.abort();
+    expect(uploads[0]!.options.signal.aborted).toBe(true);
+
+    await act(async () => abortUpload(uploads[0]!));
+    expect(result.current.isUploading).toBe(false);
+  });
+
+  it("abort() aborts the active run; a no-op when idle", async () => {
+    const { client, uploads } = makeClient();
     const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
     const { result } = renderHook(() => useUploadStuff("image"));
     await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => result.current.abort());
+    expect(result.current.isUploading).toBe(false);
+
     act(() => {
-      result.current.abort();
+      void result.current.startUpload([png()]).catch(() => {});
     });
-    expect(controllers.get("image")!.controller.abort).toHaveBeenCalledTimes(1);
+    act(() => result.current.abort());
+    expect(uploads[0]!.options.signal.aborted).toBe(true);
+
+    await act(async () => abortUpload(uploads[0]!));
+    expect(result.current.isUploading).toBe(false);
   });
 
-  it("rebinds to a fresh controller when the endpoint changes", async () => {
-    const { client, controllers } = makeClient();
+  it("rejects a second start while uploading (promise rejection, no sync throw)", async () => {
+    const { client, uploads } = makeClient();
+    const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
+    const { result } = renderHook(() => useUploadStuff("image"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      void result.current.startUpload([png()]).catch(() => {});
+    });
+    await expect(result.current.startUpload([png()])).rejects.toThrow(
+      "An upload is already in progress",
+    );
+    expect(uploads).toHaveLength(1);
+  });
+
+  it("a start() from onClientUploadComplete keeps the new run alive and abortable", async () => {
+    const { client, uploads } = makeClient();
+    const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
+    let second: Promise<unknown> | undefined;
+    const { result } = renderHook(() =>
+      useUploadStuff("image", {
+        onClientUploadComplete: () => {
+          if (!second) {
+            second = result.current.startUpload([png()]);
+            second.catch(() => {});
+          }
+        },
+      }),
+    );
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let first: Promise<unknown> | undefined;
+    act(() => {
+      first = result.current.startUpload([png()]);
+    });
+    await act(async () => {
+      finishUpload(uploads[0]!);
+      await first;
+    });
+
+    // The old run's unwinding frames must not have stomped the new run.
+    expect(result.current.isUploading).toBe(true);
+    expect(uploads).toHaveLength(2);
+
+    // abort() must control the NEW run.
+    act(() => result.current.abort());
+    expect(uploads[1]!.options.signal.aborted).toBe(true);
+    expect(uploads[0]!.options.signal.aborted).toBe(false);
+
+    await act(async () => abortUpload(uploads[1]!));
+    await expect(second!).rejects.toThrow("Upload aborted");
+    expect(result.current.isUploading).toBe(false);
+  });
+
+  it("a start() from onUploadError is not stomped by the failing run's finally", async () => {
+    const { client, uploads } = makeClient();
+    const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
+    let second: Promise<unknown> | undefined;
+    const { result } = renderHook(() =>
+      useUploadStuff("image", {
+        onUploadError: () => {
+          if (!second) {
+            second = result.current.startUpload([png()]);
+            second.catch(() => {});
+          }
+        },
+      }),
+    );
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let first: Promise<unknown> | undefined;
+    act(() => {
+      first = result.current.startUpload([png()]);
+      first.catch(() => {});
+    });
+    await act(async () => {
+      failUpload(uploads[0]!);
+      await first!.catch(() => {});
+    });
+
+    // The failed run's settle must not overwrite the new run's state.
+    expect(result.current.isUploading).toBe(true);
+
+    await act(async () => {
+      finishUpload(uploads[1]!);
+      await second;
+    });
+    expect(result.current.isUploading).toBe(false);
+    await expect(second!).resolves.toEqual(completeResult);
+  });
+
+  it("a rejection that bypasses the callbacks still settles the hook", async () => {
+    const { client, uploads } = makeClient();
+    const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
+    const { result } = renderHook(() => useUploadStuff("image"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let p: Promise<unknown> | undefined;
+    act(() => {
+      p = result.current.startUpload([png()]);
+      p.catch(() => {});
+    });
+    await act(async () => {
+      // e.g. the engine's empty-files rejection: no callback fires.
+      uploads[0]!.reject(new Error("No files provided."));
+      await p!.catch(() => {});
+    });
+    expect(result.current.isUploading).toBe(false);
+  });
+
+  it("resets to idle when the endpoint changes; the detached run can't touch state", async () => {
+    const { client, uploads } = makeClient();
     const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
     const { result, rerender } = renderHook(({ ep }: { ep: string }) => useUploadStuff(ep), {
       initialProps: { ep: "image" },
@@ -184,43 +293,88 @@ describe("useUploadStuff", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     act(() => {
-      controllers.get("image")!.store.set({ status: "uploading", progressPercent: 10 });
+      void result.current.startUpload([png()]).catch(() => {});
+    });
+    act(() => {
+      uploads[0]!.options.onUploadProgress(30);
     });
     expect(result.current.isUploading).toBe(true);
+    expect(result.current.progress).toBe(30);
 
     rerender({ ep: "document" });
-    // Fresh controller: the old run's state is detached from the hook.
-    await waitFor(() => expect(result.current.isUploading).toBe(false));
-    expect(client.createUpload).toHaveBeenCalledWith("document");
+    expect(result.current.isUploading).toBe(false);
+    expect(result.current.progress).toBe(0);
+
+    // The detached run's progress must not resurrect state on the new endpoint…
+    act(() => {
+      uploads[0]!.options.onUploadProgress(80);
+    });
+    expect(result.current.progress).toBe(0);
+    // …and abort() must not reach it.
+    act(() => result.current.abort());
+    expect(uploads[0]!.options.signal.aborted).toBe(false);
   });
 
   it("resolves the (r) => r.route selector", async () => {
-    const { client } = makeClient();
+    const { client, uploads } = makeClient();
     const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
     const { result } = renderHook(() => useUploadStuff((r: any) => r.image));
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(client.createUpload).toHaveBeenCalledWith("image");
+    act(() => {
+      void result.current.startUpload([png()]).catch(() => {});
+    });
+    expect(uploads[0]!.endpoint).toBe("image");
   });
 });
 
 describe("useRouteConfig", () => {
-  it("returns { data, error, isLoading } from the handle store", async () => {
+  it("returns { data, error, isLoading }", async () => {
     const { client } = makeClient();
     const { useRouteConfig } = createUploadStuffReactHelpers<any>(client);
     const { result } = renderHook(() => useRouteConfig("image"));
+    expect(result.current.isLoading).toBe(true);
     await waitFor(() => expect(result.current.data).toEqual(routeConfig));
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeUndefined();
   });
 
-  it("exposes refetch, which forces the handle's load", async () => {
-    const { client, handles } = makeClient();
+  it("surfaces a first-load error", async () => {
+    const { client, mock } = makeClient();
+    mock.getRouteConfig.mockRejectedValue(new Error("boom"));
     const { useRouteConfig } = createUploadStuffReactHelpers<any>(client);
     const { result } = renderHook(() => useRouteConfig("image"));
-    await waitFor(() => expect(result.current.data).toBeDefined());
-    act(() => {
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toEqual(expect.any(Error));
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it("refetch forces a fresh fetch and swaps in the new data", async () => {
+    const { client, mock } = makeClient();
+    const fresh = { ...routeConfig, maxFileSize: "8MB" };
+    const { useRouteConfig } = createUploadStuffReactHelpers<any>(client);
+    const { result } = renderHook(() => useRouteConfig("image"));
+    await waitFor(() => expect(result.current.data).toEqual(routeConfig));
+
+    mock.getRouteConfig.mockResolvedValue(fresh);
+    await act(async () => {
       result.current.refetch();
     });
-    expect(handles.get("image")!.load).toHaveBeenCalledWith({ force: true });
+    await waitFor(() => expect(result.current.data).toEqual(fresh));
+    expect(mock.getRouteConfig).toHaveBeenCalledWith("image", { force: true });
+  });
+
+  it("a failed refetch keeps serving the cached config (stale beats broken)", async () => {
+    const { client, mock } = makeClient();
+    const { useRouteConfig } = createUploadStuffReactHelpers<any>(client);
+    const { result } = renderHook(() => useRouteConfig("image"));
+    await waitFor(() => expect(result.current.data).toEqual(routeConfig));
+
+    mock.getRouteConfig.mockRejectedValue(new Error("refresh failed"));
+    await act(async () => {
+      result.current.refetch();
+    });
+    expect(result.current.data).toEqual(routeConfig);
+    expect(result.current.error).toBeUndefined();
+    expect(result.current.isLoading).toBe(false);
   });
 });

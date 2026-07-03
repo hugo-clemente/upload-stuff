@@ -320,16 +320,53 @@ describe("uploadFiles — abort matrix", () => {
   });
 });
 
-describe("fetchRouteConfig", () => {
+describe("getRouteConfig", () => {
   it("returns the route config", async () => {
     mockFetch();
     const client = makeClient();
-    await expect(client.fetchRouteConfig("image")).resolves.toEqual(testRouteConfig);
+    await expect(client.getRouteConfig("image")).resolves.toEqual(testRouteConfig);
   });
 
-  it("rejects on a non-OK response", async () => {
-    mockFetch({ routeConfig: () => jsonResponse({ error: "unknown endpoint" }, 404) });
+  it("caches per endpoint: concurrent and repeat calls share one fetch", async () => {
+    const { calls } = mockFetch();
     const client = makeClient();
-    await expect(client.fetchRouteConfig("missing")).rejects.toThrow();
+    await Promise.all([client.getRouteConfig("image"), client.getRouteConfig("image")]);
+    await client.getRouteConfig("image");
+    expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(1);
+
+    await client.getRouteConfig("document");
+    expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(2);
+  });
+
+  it("rejects on a non-OK response and retries on the next call", async () => {
+    let n = 0;
+    mockFetch({
+      routeConfig: () =>
+        n++ === 0 ? jsonResponse({ error: "boom" }, 500) : jsonResponse(testRouteConfig),
+    });
+    const client = makeClient();
+    await expect(client.getRouteConfig("image")).rejects.toThrow();
+    await expect(client.getRouteConfig("image")).resolves.toEqual(testRouteConfig);
+  });
+
+  it("force drops the cache and fetches fresh", async () => {
+    const { calls } = mockFetch();
+    const client = makeClient();
+    await client.getRouteConfig("image");
+    await expect(client.getRouteConfig("image", { force: true })).resolves.toEqual(
+      testRouteConfig,
+    );
+    expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(2);
+  });
+
+  it("uploadFiles shares the cache — no second config fetch", async () => {
+    const { calls } = mockFetch();
+    const client = makeClient();
+    await client.getRouteConfig("image");
+    const p = client.uploadFiles("image", [png()]);
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await p;
+    expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(1);
   });
 });
