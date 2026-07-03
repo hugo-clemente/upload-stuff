@@ -359,6 +359,20 @@ describe("getRouteConfig", () => {
     expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(2);
   });
 
+  it("a failed forced refresh keeps the cached config for later callers", async () => {
+    let n = 0;
+    const { calls } = mockFetch({
+      routeConfig: () =>
+        n++ === 1 ? jsonResponse({ error: "boom" }, 500) : jsonResponse(testRouteConfig),
+    });
+    const client = makeClient();
+    await client.getRouteConfig("image");
+    await expect(client.getRouteConfig("image", { force: true })).rejects.toThrow();
+    // Stale beats broken: the cached config still serves without a new fetch.
+    await expect(client.getRouteConfig("image")).resolves.toEqual(testRouteConfig);
+    expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(2);
+  });
+
   it("uploadFiles shares the cache — no second config fetch", async () => {
     const { calls } = mockFetch();
     const client = makeClient();

@@ -42,16 +42,20 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
   // request, and a rejected entry evicts itself so the next call retries.
   const configs = new Map<string, Promise<AnyRouteConfig>>();
   const loadRouteConfig = (resolved: string, force?: boolean): Promise<AnyRouteConfig> => {
-    if (force) configs.delete(resolved);
-    let promise = configs.get(resolved);
-    if (!promise) {
-      promise = fetchRouteConfig(resolved).catch((e) => {
-        configs.delete(resolved);
-        throw e;
-      });
-      configs.set(resolved, promise);
-    }
-    return promise;
+    const cached = configs.get(resolved);
+    if (cached && !force) return cached;
+    const fresh = fetchRouteConfig(resolved).catch((e) => {
+      // Self-evict so the next call retries — but stale beats broken: a
+      // failed forced refresh restores the entry it replaced, so uploads
+      // keep using the last good config.
+      if (configs.get(resolved) === fresh) {
+        if (cached) configs.set(resolved, cached);
+        else configs.delete(resolved);
+      }
+      throw e;
+    });
+    configs.set(resolved, fresh);
+    return fresh;
   };
 
   const getRouteConfig = <TEndpoint extends keyof TFileRouter>(

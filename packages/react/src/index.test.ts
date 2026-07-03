@@ -315,6 +315,40 @@ describe("useUploadStuff", () => {
     expect(uploads[0]!.options.signal.aborted).toBe(false);
   });
 
+  it("switching back to an endpoint mid-run does not reattach the orphaned run", async () => {
+    const { client, uploads } = makeClient();
+    const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
+    const { result, rerender } = renderHook(({ ep }: { ep: string }) => useUploadStuff(ep), {
+      initialProps: { ep: "image" },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      void result.current.startUpload([png()]).catch(() => {});
+    });
+    rerender({ ep: "document" });
+    rerender({ ep: "image" });
+    expect(result.current.isUploading).toBe(false);
+
+    // abort() must not reach the orphaned run…
+    act(() => result.current.abort());
+    expect(uploads[0]!.options.signal.aborted).toBe(false);
+
+    // …and a new run can start against the same endpoint.
+    act(() => {
+      void result.current.startUpload([png()]).catch(() => {});
+    });
+    expect(uploads).toHaveLength(2);
+    expect(result.current.isUploading).toBe(true);
+
+    // The orphaned run's late completion must not stomp the new run's state.
+    await act(async () => {
+      finishUpload(uploads[0]!);
+    });
+    expect(result.current.isUploading).toBe(true);
+    expect(result.current.progress).toBe(0);
+  });
+
   it("resolves the (r) => r.route selector", async () => {
     const { client, uploads } = makeClient();
     const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);

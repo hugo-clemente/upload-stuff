@@ -133,30 +133,37 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
       [endpoint],
     );
 
-    // Upload state keyed on the resolved endpoint: switching endpoints
-    // presents a fresh idle hook and detaches the old run — its callbacks
-    // still fire, but the endpoint key below keeps it off this state.
-    const [run, setRun] = useState({ endpoint: resolvedEndpoint, isUploading: false, progress: 0 });
+    // Upload state keyed on a binding generation: switching endpoints bumps
+    // the generation, which presents a fresh idle hook and orphans the old
+    // run — its callbacks still fire, but the generation guards below keep
+    // it off this state (even after switching back to the same endpoint).
+    const [run, setRun] = useState({
+      endpoint: resolvedEndpoint,
+      gen: 0,
+      isUploading: false,
+      progress: 0,
+    });
     if (run.endpoint !== resolvedEndpoint) {
-      setRun({ endpoint: resolvedEndpoint, isUploading: false, progress: 0 });
+      setRun({ endpoint: resolvedEndpoint, gen: run.gen + 1, isUploading: false, progress: 0 });
     }
+    // The generation this render is bound to — computed (not read from state)
+    // so it is already correct in the render that detects the switch.
+    const boundGen = run.endpoint === resolvedEndpoint ? run.gen : run.gen + 1;
 
     // The active run's AbortController doubles as its identity token: only
     // the active run may settle state or answer abort(). Terminal callbacks
     // may synchronously start the next run while the old frame is still
     // unwinding — the token comparison keeps the old run's finally off the
     // new run's state.
-    const activeRef = useRef<{ endpoint: TEndpoint; controller: AbortController } | undefined>(
-      undefined,
-    );
+    const activeRef = useRef<{ gen: number; controller: AbortController } | undefined>(undefined);
 
     const startUpload = useCallback(
       (async (files: File[], input: any, runOpts?: StartUploadFnOptions) => {
-        if (activeRef.current?.endpoint === resolvedEndpoint) {
+        if (activeRef.current?.gen === boundGen) {
           // Async function → rejected promise, no sync throw.
           throw new Error("An upload is already in progress");
         }
-        const token = { endpoint: resolvedEndpoint, controller: new AbortController() };
+        const token = { gen: boundGen, controller: new AbortController() };
         activeRef.current = token;
 
         const callerSignal = runOpts?.signal;
@@ -165,7 +172,7 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
         else callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
 
         const update = (partial: Partial<{ isUploading: boolean; progress: number }>) =>
-          setRun((prev) => (prev.endpoint === token.endpoint ? { ...prev, ...partial } : prev));
+          setRun((prev) => (prev.gen === token.gen ? { ...prev, ...partial } : prev));
         // Settling BEFORE the user's terminal callback lets that callback
         // synchronously start the next run against an idle hook.
         const settle = () => {
@@ -205,14 +212,14 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
           callerSignal?.removeEventListener("abort", onCallerAbort);
         }
       }) as StartUploadFn<TRoute>,
-      [opts, resolvedEndpoint],
+      [opts, resolvedEndpoint, boundGen],
     );
 
     const abort = useCallback(() => {
-      // Only aborts a run bound to the current endpoint — a run detached by
-      // an endpoint switch keeps running.
-      if (activeRef.current?.endpoint === resolvedEndpoint) activeRef.current.controller.abort();
-    }, [resolvedEndpoint]);
+      // Only aborts a run of the current binding generation — a run orphaned
+      // by an endpoint switch keeps running.
+      if (activeRef.current?.gen === boundGen) activeRef.current.controller.abort();
+    }, [boundGen]);
 
     const { data: routeConfig, isLoading } = useRouteConfig(resolvedEndpoint);
 
