@@ -240,8 +240,7 @@ describe("uploadFiles — abort matrix", () => {
     expect(onUploadAborted).toHaveBeenCalledOnce();
     expect(onUploadError).not.toHaveBeenCalled();
     expect(MockXHR.instances).toHaveLength(0);
-    // Must bail before init-upload — a pre-aborted run must not create
-    // server-side upload state (presigned URLs, DB rows) it then orphans.
+    // A pre-aborted run must not create server-side state via init-upload.
     expect(calls.some((c) => c.pathname.endsWith("/init-upload"))).toBe(false);
     expect(calls.some((c) => c.pathname.endsWith("/complete-upload"))).toBe(false);
   });

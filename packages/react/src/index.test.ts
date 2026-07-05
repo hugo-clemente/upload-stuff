@@ -372,7 +372,6 @@ describe("useUploadStuff", () => {
     // The startUpload an orphaned run's terminal callback would still hold.
     const staleStart = result.current.startUpload;
 
-    // Switch endpoints (orphaning the image binding), then start a real run.
     rerender({ ep: "document" });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     act(() => {
