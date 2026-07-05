@@ -246,6 +246,27 @@ describe("uploadFiles — abort matrix", () => {
     expect(calls.some((c) => c.pathname.endsWith("/complete-upload"))).toBe(false);
   });
 
+  it("abort while the route-config load hangs: bails promptly, never sends init", async () => {
+    // A route-config fetch that never resolves — the abort must not wait on it.
+    const { calls } = mockFetch({ routeConfig: (() => new Promise<never>(() => {})) as any });
+    const onUploadAborted = vi.fn();
+    const onUploadError = vi.fn();
+    const controller = new AbortController();
+    const client = makeClient();
+
+    const p = client.uploadFiles("image", [png()], {
+      signal: controller.signal,
+      onUploadAborted,
+      onUploadError,
+    });
+    controller.abort();
+
+    await expect(p).rejects.toThrow("Upload aborted.");
+    expect(onUploadAborted).toHaveBeenCalledOnce();
+    expect(onUploadError).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.pathname.endsWith("/init-upload"))).toBe(false);
+  });
+
   it("mid-transfer abort: cancels the XHR, reports onUploadAborted once, no complete", async () => {
     const { calls } = mockFetch();
     const onUploadAborted = vi.fn();

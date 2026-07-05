@@ -109,8 +109,42 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
     // In-flight PUT XHRs, so an abort can cancel the transfer mid-file.
     let currentXhrs: XMLHttpRequest[] = [];
 
+    // onUploadAborted fires at most once, whichever stage observes the abort
+    // (pre-init guard, the transfer listener, or the config-load race).
+    let abortReported = false;
+    const reportAbort = () => {
+      if (abortReported) return;
+      abortReported = true;
+      opts.onUploadAborted?.();
+    };
+    // Await `p` but reject the instant the run is aborted, so a slow/hanging
+    // route-config fetch bails immediately instead of blocking. It does NOT
+    // cancel `p`: that promise is shared and cached, so other callers — and a
+    // later retry on this endpoint — still await it.
+    const untilAbort = <T>(p: Promise<T>): Promise<T> => {
+      if (!signal) return p;
+      return new Promise<T>((resolve, reject) => {
+        const onSignal = () => reject(new Error("Upload aborted."));
+        signal.addEventListener("abort", onSignal, { once: true });
+        const stop = () => signal.removeEventListener("abort", onSignal);
+        p.then(
+          (v) => {
+            stop();
+            resolve(v);
+          },
+          (e) => {
+            stop();
+            reject(e);
+          },
+        );
+      });
+    };
+
     try {
-      const routeConfig = opts.routeConfig ?? (await loadRouteConfig(resolved));
+      // Already aborted: bail before touching the network at all.
+      if (signal?.aborted) throw new Error("Upload aborted.");
+
+      const routeConfig = opts.routeConfig ?? (await untilAbort(loadRouteConfig(resolved)));
 
       const preparedFiles =
         (await opts.onBeforeUploadBegin?.({ files, config: routeConfig })) ?? files;
@@ -124,12 +158,9 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
       validateFiles(meta, routeConfig);
 
       // Bail before init-upload — it creates server-side state (presigned URLs,
-      // DB rows) we'd otherwise orphan. Catches an already-aborted signal and
-      // one that fired while the config loaded or files were prepared.
-      if (signal?.aborted) {
-        opts.onUploadAborted?.();
-        throw new Error("Upload aborted.");
-      }
+      // DB rows) we'd otherwise orphan. Catches an abort that landed while
+      // onBeforeUploadBegin prepared the files.
+      if (signal?.aborted) throw new Error("Upload aborted.");
 
       const uploadPlan = (await parseResponse(
         honoClient[":endpoint"]["init-upload"].$post(
@@ -161,14 +192,10 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
       };
 
       if (signal) {
-        if (signal.aborted) {
-          abort();
-          opts.onUploadAborted?.();
-          throw new Error("Upload aborted.");
-        }
+        if (signal.aborted) throw new Error("Upload aborted.");
         onAbort = () => {
           abort();
-          opts.onUploadAborted?.();
+          reportAbort();
         };
         signal.addEventListener("abort", onAbort, { once: true });
       }
@@ -220,11 +247,10 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
       return verified;
     } catch (e) {
       const err = e instanceof Error ? e : new Error("An error occurred during upload.");
-      // An abort is already reported through onUploadAborted — don't
-      // double-report it as an error.
-      if (!signal?.aborted) {
-        opts.onUploadError?.(err);
-      }
+      // Single place every failure funnels through: an abort reports once via
+      // onUploadAborted (never as an error), everything else via onUploadError.
+      if (signal?.aborted) reportAbort();
+      else opts.onUploadError?.(err);
       throw err;
     } finally {
       if (signal && onAbort) signal.removeEventListener("abort", onAbort);
