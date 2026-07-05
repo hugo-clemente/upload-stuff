@@ -149,6 +149,11 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
     // The generation this render is bound to — computed (not read from state)
     // so it is already correct in the render that detects the switch.
     const boundGen = run.endpoint === resolvedEndpoint ? run.gen : run.gen + 1;
+    // The latest bound generation. A startUpload closure captured by an
+    // orphaned render still carries that render's boundGen; comparing it to
+    // this ref lets such a stale start recognise itself and bail.
+    const boundGenRef = useRef(boundGen);
+    boundGenRef.current = boundGen;
 
     // The active run's AbortController doubles as its identity token: only
     // the active run may settle state or answer abort(). Terminal callbacks
@@ -159,6 +164,13 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
 
     const startUpload = useCallback(
       (async (files: File[], input: any, runOpts?: StartUploadFnOptions) => {
+        // A start from an orphaned render (an endpoint switch has since bumped
+        // the generation) must not overwrite the current run's active token —
+        // otherwise that run's settle/abort stop matching and it hangs in
+        // `isUploading` forever. Reject before touching activeRef.
+        if (boundGen !== boundGenRef.current) {
+          throw new Error("This upload binding is no longer active.");
+        }
         if (activeRef.current?.gen === boundGen) {
           // Async function → rejected promise, no sync throw.
           throw new Error("An upload is already in progress");

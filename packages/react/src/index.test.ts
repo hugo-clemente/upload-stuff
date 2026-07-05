@@ -361,6 +361,38 @@ describe("useUploadStuff", () => {
     expect(result.current.progress).toBe(0);
   });
 
+  it("a start from a stale binding generation cannot hijack the active run", async () => {
+    const { client, uploads } = makeClient();
+    const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
+    const { result, rerender } = renderHook(({ ep }: { ep: string }) => useUploadStuff(ep), {
+      initialProps: { ep: "image" },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // The startUpload an orphaned run's terminal callback would still hold.
+    const staleStart = result.current.startUpload;
+
+    // Switch endpoints (orphaning the image binding), then start a real run.
+    rerender({ ep: "document" });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    act(() => {
+      void result.current.startUpload([png()]).catch(() => {});
+    });
+    expect(result.current.isUploading).toBe(true);
+    const activeUpload = uploads[uploads.length - 1]!;
+
+    // The stale closure must reject instead of overwriting the active token.
+    await act(async () => {
+      await expect(staleStart([png()])).rejects.toThrow("no longer active");
+    });
+    expect(uploads).toHaveLength(1);
+
+    // The active document run is untouched — still uploading and abortable.
+    expect(result.current.isUploading).toBe(true);
+    act(() => result.current.abort());
+    expect(activeUpload.options.signal.aborted).toBe(true);
+  });
+
   it("resolves the (r) => r.route selector", async () => {
     const { client, uploads } = makeClient();
     const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
