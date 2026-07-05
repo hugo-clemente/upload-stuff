@@ -52,6 +52,18 @@ const abortUpload = (u: PendingUpload) => {
 
 const png = () => new File([new Uint8Array(10)], "a.png", { type: "image/png" });
 
+// A promise the test settles by hand — lets a route-config load stay in flight
+// across an endpoint switch so the stale-settle guards can be exercised.
+const deferred = <T = unknown>() => {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+};
+
 describe("useUploadStuff", () => {
   it("loads the route config and derives accept", async () => {
     const { client } = makeClient();
@@ -359,6 +371,44 @@ describe("useUploadStuff", () => {
     });
     expect(uploads[0]!.endpoint).toBe("image");
   });
+
+  it("aborts the run immediately when the caller signal is already aborted", async () => {
+    const { client, uploads } = makeClient();
+    const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
+    const controller = new AbortController();
+    controller.abort();
+    const { result } = renderHook(() => useUploadStuff("image"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      void result.current
+        .startUpload([png()], undefined, { signal: controller.signal })
+        .catch(() => {});
+    });
+    // The composed signal is aborted synchronously, before any listener wiring.
+    expect(uploads[0]!.options.signal.aborted).toBe(true);
+  });
+
+  it("does not throw when a run settles after the component unmounts", async () => {
+    const { client, uploads } = makeClient();
+    const { useUploadStuff } = createUploadStuffReactHelpers<any>(client);
+    const { result, unmount } = renderHook(() => useUploadStuff("image"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let p: Promise<unknown> | undefined;
+    act(() => {
+      p = result.current.startUpload([png()]);
+      p.catch(() => {});
+    });
+    unmount();
+
+    // The terminal callback + settle() land after unmount — a post-unmount
+    // setState must be a silent no-op, and the promise still resolves.
+    await act(async () => {
+      finishUpload(uploads[0]!);
+    });
+    await expect(p!).resolves.toEqual(completeResult);
+  });
 });
 
 describe("useRouteConfig", () => {
@@ -410,5 +460,86 @@ describe("useRouteConfig", () => {
     expect(result.current.data).toEqual(routeConfig);
     expect(result.current.error).toBeUndefined();
     expect(result.current.isLoading).toBe(false);
+  });
+
+  it("resets to loading and drops prior data when the endpoint changes", async () => {
+    const cfgs: Record<string, any> = {
+      image: { ...routeConfig, type: "image" },
+      document: { ...routeConfig, type: "document" },
+    };
+    const mock = {
+      getRouteConfig: vi.fn(async (ep: string) => cfgs[ep]),
+      uploadFiles: vi.fn(),
+    };
+    const { useRouteConfig } = createUploadStuffReactHelpers<any>(
+      mock as unknown as UploadStuffClient<any>,
+    );
+    const { result, rerender } = renderHook(({ ep }: { ep: string }) => useRouteConfig(ep), {
+      initialProps: { ep: "image" },
+    });
+    await waitFor(() => expect(result.current.data).toEqual(cfgs.image));
+
+    rerender({ ep: "document" });
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.data).toBeUndefined();
+    await waitFor(() => expect(result.current.data).toEqual(cfgs.document));
+  });
+
+  it("ignores a stale load that resolves after the endpoint switched", async () => {
+    const image = deferred<any>();
+    const document = deferred<any>();
+    const byEp: Record<string, typeof image> = { image, document };
+    const mock = {
+      getRouteConfig: vi.fn((ep: string) => byEp[ep]!.promise),
+      uploadFiles: vi.fn(),
+    };
+    const { useRouteConfig } = createUploadStuffReactHelpers<any>(
+      mock as unknown as UploadStuffClient<any>,
+    );
+    const { result, rerender } = renderHook(({ ep }: { ep: string }) => useRouteConfig(ep), {
+      initialProps: { ep: "image" },
+    });
+    expect(result.current.isLoading).toBe(true);
+
+    rerender({ ep: "document" });
+    const docConfig = { ...routeConfig, type: "document" };
+    await act(async () => {
+      document.resolve(docConfig);
+    });
+    await waitFor(() => expect(result.current.data).toEqual(docConfig));
+
+    // The old endpoint's load settles late — it must not overwrite the new one.
+    await act(async () => {
+      image.resolve({ ...routeConfig, type: "image" });
+    });
+    expect(result.current.data).toEqual(docConfig);
+  });
+
+  it("a stale load that rejects after the switch keeps the new endpoint's data", async () => {
+    const image = deferred<any>();
+    const document = deferred<any>();
+    const byEp: Record<string, typeof image> = { image, document };
+    const mock = {
+      getRouteConfig: vi.fn((ep: string) => byEp[ep]!.promise),
+      uploadFiles: vi.fn(),
+    };
+    const { useRouteConfig } = createUploadStuffReactHelpers<any>(
+      mock as unknown as UploadStuffClient<any>,
+    );
+    const { result, rerender } = renderHook(({ ep }: { ep: string }) => useRouteConfig(ep), {
+      initialProps: { ep: "image" },
+    });
+    rerender({ ep: "document" });
+    const docConfig = { ...routeConfig, type: "document" };
+    await act(async () => {
+      document.resolve(docConfig);
+    });
+    await waitFor(() => expect(result.current.data).toEqual(docConfig));
+
+    await act(async () => {
+      image.reject(new Error("late failure"));
+    });
+    expect(result.current.data).toEqual(docConfig);
+    expect(result.current.error).toBeUndefined();
   });
 });

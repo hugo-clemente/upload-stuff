@@ -38,23 +38,37 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
     ) as unknown as Promise<AnyRouteConfig>;
 
   // Config is fetched once per endpoint and cached for the client's lifetime.
-  // The promise itself is the cache entry: concurrent callers share one
-  // request, and a rejected entry evicts itself so the next call retries.
-  const configs = new Map<string, Promise<AnyRouteConfig>>();
+  // Two maps, kept distinct on purpose: `good` holds the last *resolved* config
+  // (only successes land here); `inflight` holds the fetch currently running so
+  // every caller — forced or not — dedupes onto one request. `force` doesn't
+  // bypass the cache; it means "the resolved value is stale, refetch" while
+  // still riding any in-flight fetch. A rejection never enters `good`, so it
+  // can't poison the cache, and stale beats broken falls out for free.
+  const good = new Map<string, AnyRouteConfig>();
+  const inflight = new Map<string, Promise<AnyRouteConfig>>();
   const loadRouteConfig = (resolved: string, force?: boolean): Promise<AnyRouteConfig> => {
-    const cached = configs.get(resolved);
-    if (cached && !force) return cached;
-    const fresh = fetchRouteConfig(resolved).catch((e) => {
-      // Self-evict so the next call retries — but stale beats broken: a
-      // failed forced refresh restores the entry it replaced, so uploads
-      // keep using the last good config.
-      if (configs.get(resolved) === fresh) {
-        if (cached) configs.set(resolved, cached);
-        else configs.delete(resolved);
-      }
-      throw e;
-    });
-    configs.set(resolved, fresh);
+    if (!force && good.has(resolved)) return Promise.resolve(good.get(resolved)!);
+    const pending = inflight.get(resolved);
+    if (pending) return pending;
+
+    const fresh = fetchRouteConfig(resolved);
+    inflight.set(resolved, fresh);
+    // Promote-and-clear in the same settle handler (not a trailing .finally) so
+    // `inflight` is cleared before any awaiting caller resumes — otherwise a
+    // forced refetch fired right after the previous load resolves would dedupe
+    // onto the stale, already-settled promise instead of refetching.
+    const done = () => {
+      if (inflight.get(resolved) === fresh) inflight.delete(resolved);
+    };
+    void fresh.then(
+      (config) => {
+        good.set(resolved, config);
+        done();
+      },
+      // Failure keeps the last good config; nothing is stored, so the next call
+      // refetches instead of replaying a rejection.
+      done,
+    );
     return fresh;
   };
 
@@ -62,8 +76,10 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
     endpoint: EndpointArg<TFileRouter, TEndpoint>,
     opts?: {
       /**
-       * Drop the cached config and fetch fresh — the escape hatch when a
-       * route's config changed server-side.
+       * Treat the cached config as stale and refetch — the escape hatch when a
+       * route's config changed server-side. Still deduped: a fetch already in
+       * flight is shared rather than duplicated, and the last good config keeps
+       * serving until the refresh resolves.
        */
       force?: boolean;
     },

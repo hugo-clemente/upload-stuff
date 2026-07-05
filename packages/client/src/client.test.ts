@@ -349,7 +349,7 @@ describe("getRouteConfig", () => {
     await expect(client.getRouteConfig("image")).resolves.toEqual(testRouteConfig);
   });
 
-  it("force drops the cache and fetches fresh", async () => {
+  it("force refetches even when a config is already cached", async () => {
     const { calls } = mockFetch();
     const client = makeClient();
     await client.getRouteConfig("image");
@@ -357,6 +357,37 @@ describe("getRouteConfig", () => {
       testRouteConfig,
     );
     expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(2);
+  });
+
+  it("force rides an in-flight fetch instead of starting a parallel one", async () => {
+    const { calls } = mockFetch();
+    const client = makeClient();
+    // A forced refetch fired while the initial load is still in flight must
+    // dedupe onto it, not open a second request.
+    const [a, b] = await Promise.all([
+      client.getRouteConfig("image"),
+      client.getRouteConfig("image", { force: true }),
+    ]);
+    expect(a).toEqual(testRouteConfig);
+    expect(b).toEqual(testRouteConfig);
+    expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(1);
+  });
+
+  it("an overlapping forced refetch that fails never poisons the cache", async () => {
+    let failing = true;
+    mockFetch({
+      routeConfig: () =>
+        failing ? jsonResponse({ error: "boom" }, 500) : jsonResponse(testRouteConfig),
+    });
+    const client = makeClient();
+    // Initial load + a forced refetch that rides it; both reject.
+    await Promise.allSettled([
+      client.getRouteConfig("image"),
+      client.getRouteConfig("image", { force: true }),
+    ]);
+    // The cache must not be stuck on the rejection — the next call refetches.
+    failing = false;
+    await expect(client.getRouteConfig("image")).resolves.toEqual(testRouteConfig);
   });
 
   it("a failed forced refresh keeps the cached config for later callers", async () => {
