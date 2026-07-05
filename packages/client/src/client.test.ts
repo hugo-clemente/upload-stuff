@@ -222,7 +222,7 @@ describe("uploadFiles — failures", () => {
 });
 
 describe("uploadFiles — abort matrix", () => {
-  it("pre-start abort: reports onUploadAborted once, never onUploadError, no PUT", async () => {
+  it("pre-start abort: reports onUploadAborted once, never onUploadError, no init/PUT", async () => {
     const { calls } = mockFetch();
     const onUploadAborted = vi.fn();
     const onUploadError = vi.fn();
@@ -240,6 +240,9 @@ describe("uploadFiles — abort matrix", () => {
     expect(onUploadAborted).toHaveBeenCalledOnce();
     expect(onUploadError).not.toHaveBeenCalled();
     expect(MockXHR.instances).toHaveLength(0);
+    // Must bail before init-upload — a pre-aborted run must not create
+    // server-side upload state (presigned URLs, DB rows) it then orphans.
+    expect(calls.some((c) => c.pathname.endsWith("/init-upload"))).toBe(false);
     expect(calls.some((c) => c.pathname.endsWith("/complete-upload"))).toBe(false);
   });
 

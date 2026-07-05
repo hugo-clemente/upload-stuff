@@ -123,6 +123,14 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
 
       validateFiles(meta, routeConfig);
 
+      // Bail before init-upload — it creates server-side state (presigned URLs,
+      // DB rows) we'd otherwise orphan. Catches an already-aborted signal and
+      // one that fired while the config loaded or files were prepared.
+      if (signal?.aborted) {
+        opts.onUploadAborted?.();
+        throw new Error("Upload aborted.");
+      }
+
       const uploadPlan = (await parseResponse(
         honoClient[":endpoint"]["init-upload"].$post(
           {
