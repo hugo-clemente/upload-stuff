@@ -6,15 +6,13 @@ import { useUploadStuff } from "@/lib/upload-stuff-client";
 
 export function UploadPanel({ user, onUploaded }: { user: string; onUploaded: () => void }) {
   const [caption, setCaption] = useState("");
-  const [progress, setProgress] = useState(0);
   const [serverData, setServerData] = useState<{ owner: string; count: number } | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { startUpload, isUploading, isLoading, accept } = useUploadStuff((r) => r.image, {
+  const { startUpload, isUploading, isLoading, accept, progress, abort } = useUploadStuff((r) => r.image, {
     headers: { "x-user-id": user },
     uploadProgressGranularity: "fine",
-    onUploadProgress: setProgress,
     onClientUploadComplete: (res) => {
       setServerData(res.serverData ?? null);
       setImageUrl(res.files[0]?.publicUrl ?? null);
@@ -49,9 +47,14 @@ export function UploadPanel({ user, onUploaded }: { user: string; onUploaded: ()
       </div>
 
       {isUploading && (
-        <div className="bar" aria-label="upload progress">
-          <span style={{ width: `${progress}%` }} />
-        </div>
+        <>
+          <div className="bar" aria-label="upload progress">
+            <span style={{ width: `${progress}%` }} />
+          </div>
+          <button type="button" onClick={abort}>
+            Cancel
+          </button>
+        </>
       )}
 
       {error && <p style={{ color: "crimson" }}>Error: {error}</p>}

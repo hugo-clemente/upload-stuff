@@ -210,7 +210,7 @@ export function AvatarUpload() {
 
 `createUploadStuffReactHelpers(client)` returns `{ useUploadStuff, useRouteConfig }`; create `client` once with `createUploadStuffClient<FileRouter>(...)` from `@upload-stuff/client`.
 
-`useUploadStuff` returns `{ startUpload, isUploading, isLoading, routeConfig, accept }`.
+`useUploadStuff` returns `{ startUpload, isUploading, progress, abort, isLoading, routeConfig, accept }`.
 
 ## S3 adapter
 

@@ -29,3 +29,9 @@ useUploadStuff((r) => r.imge);
 
 // and a correct route is accepted:
 useUploadStuff((r) => r.image);
+
+// startUpload input arity follows the route: required input must be passed…
+// @ts-expect-error image requires an input
+void useUploadStuff((r) => r.image).startUpload([new File([], "a.png")]);
+// …and an input-free route takes none.
+void useUploadStuff((r) => r.document).startUpload([new File([], "a.pdf")]);

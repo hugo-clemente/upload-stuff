@@ -3,75 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { createUploadStuffClient } from "./client";
 import { MockXHR } from "./test/mock-xhr";
-
-const testRouteConfig = {
-  isPublic: true,
-  type: "image",
-  usageContext: "test",
-  maxFileSize: "4MB",
-};
-
-const testUploadPlan = {
-  batchToken: "batch-token-1",
-  files: [
-    {
-      id: "file-1",
-      key: "k1",
-      filename: "a.png",
-      contentType: "image/png",
-      size: 1000,
-      uploadUrl: "https://storage.example.com/put/1",
-      uploadHeaders: { "x-amz-meta-user": "u1" },
-    },
-  ],
-};
-
-const testCompleteResult = {
-  files: [
-    {
-      id: "file-1",
-      key: "k1",
-      filename: "a.png",
-      contentType: "image/png",
-      size: 1000,
-      publicUrl: "https://cdn.example.com/k1",
-    },
-  ],
-  serverData: { ok: true },
-};
-
-const jsonResponse = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-
-const mockFetch = ({
-  routeConfig = () => jsonResponse(testRouteConfig),
-  init = () => jsonResponse(testUploadPlan),
-  complete = () => jsonResponse(testCompleteResult),
-}: Partial<Record<"routeConfig" | "init" | "complete", (req: Request) => Response>> = {}) => {
-  const calls: { pathname: string; request: Request }[] = [];
-  vi.stubGlobal("fetch", async (input: RequestInfo | URL, requestInit?: RequestInit) => {
-    const request = new Request(input as any, requestInit);
-    const { pathname } = new URL(request.url);
-    calls.push({ pathname, request });
-    if (pathname.endsWith("/route-config")) return routeConfig(request);
-    if (pathname.endsWith("/init-upload")) return init(request);
-    if (pathname.endsWith("/complete-upload")) return complete(request);
-    throw new Error(`Unexpected fetch: ${pathname}`);
-  });
-  return { calls };
-};
+import {
+  jsonResponse,
+  mockFetch,
+  png,
+  testCompleteResult,
+  testRouteConfig,
+  testUploadPlan,
+  waitForXhrs,
+} from "./test/harness";
 
 const makeClient = () => createUploadStuffClient<any>({ baseURL: "https://app.example.com" });
-
-const png = (size = 1000, name = "a.png") =>
-  new File([new Uint8Array(size)], name, { type: "image/png" });
-
-// Resolves once `count` XHRs exist — the PUT loop creates them asynchronously.
-const waitForXhrs = (count: number) =>
-  vi.waitFor(() => expect(MockXHR.instances.length).toBeGreaterThanOrEqual(count));
 
 beforeEach(() => {
   MockXHR.reset();
@@ -280,7 +222,7 @@ describe("uploadFiles — failures", () => {
 });
 
 describe("uploadFiles — abort matrix", () => {
-  it("pre-start abort: reports onUploadAborted once, never onUploadError, no PUT", async () => {
+  it("pre-start abort: reports onUploadAborted once, never onUploadError, no init/PUT", async () => {
     const { calls } = mockFetch();
     const onUploadAborted = vi.fn();
     const onUploadError = vi.fn();
@@ -298,7 +240,30 @@ describe("uploadFiles — abort matrix", () => {
     expect(onUploadAborted).toHaveBeenCalledOnce();
     expect(onUploadError).not.toHaveBeenCalled();
     expect(MockXHR.instances).toHaveLength(0);
+    // A pre-aborted run must not create server-side state via init-upload.
+    expect(calls.some((c) => c.pathname.endsWith("/init-upload"))).toBe(false);
     expect(calls.some((c) => c.pathname.endsWith("/complete-upload"))).toBe(false);
+  });
+
+  it("abort while the route-config load hangs: bails promptly, never sends init", async () => {
+    // A route-config fetch that never resolves — the abort must not wait on it.
+    const { calls } = mockFetch({ routeConfig: (() => new Promise<never>(() => {})) as any });
+    const onUploadAborted = vi.fn();
+    const onUploadError = vi.fn();
+    const controller = new AbortController();
+    const client = makeClient();
+
+    const p = client.uploadFiles("image", [png()], {
+      signal: controller.signal,
+      onUploadAborted,
+      onUploadError,
+    });
+    controller.abort();
+
+    await expect(p).rejects.toThrow("Upload aborted.");
+    expect(onUploadAborted).toHaveBeenCalledOnce();
+    expect(onUploadError).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.pathname.endsWith("/init-upload"))).toBe(false);
   });
 
   it("mid-transfer abort: cancels the XHR, reports onUploadAborted once, no complete", async () => {
@@ -378,16 +343,98 @@ describe("uploadFiles — abort matrix", () => {
   });
 });
 
-describe("fetchRouteConfig", () => {
+describe("getRouteConfig", () => {
   it("returns the route config", async () => {
     mockFetch();
     const client = makeClient();
-    await expect(client.fetchRouteConfig("image")).resolves.toEqual(testRouteConfig);
+    await expect(client.getRouteConfig("image")).resolves.toEqual(testRouteConfig);
   });
 
-  it("rejects on a non-OK response", async () => {
-    mockFetch({ routeConfig: () => jsonResponse({ error: "unknown endpoint" }, 404) });
+  it("caches per endpoint: concurrent and repeat calls share one fetch", async () => {
+    const { calls } = mockFetch();
     const client = makeClient();
-    await expect(client.fetchRouteConfig("missing")).rejects.toThrow();
+    await Promise.all([client.getRouteConfig("image"), client.getRouteConfig("image")]);
+    await client.getRouteConfig("image");
+    expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(1);
+
+    await client.getRouteConfig("document");
+    expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(2);
+  });
+
+  it("rejects on a non-OK response and retries on the next call", async () => {
+    let n = 0;
+    mockFetch({
+      routeConfig: () =>
+        n++ === 0 ? jsonResponse({ error: "boom" }, 500) : jsonResponse(testRouteConfig),
+    });
+    const client = makeClient();
+    await expect(client.getRouteConfig("image")).rejects.toThrow();
+    await expect(client.getRouteConfig("image")).resolves.toEqual(testRouteConfig);
+  });
+
+  it("force refetches even when a config is already cached", async () => {
+    const { calls } = mockFetch();
+    const client = makeClient();
+    await client.getRouteConfig("image");
+    await expect(client.getRouteConfig("image", { force: true })).resolves.toEqual(
+      testRouteConfig,
+    );
+    expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(2);
+  });
+
+  it("force rides an in-flight fetch instead of starting a parallel one", async () => {
+    const { calls } = mockFetch();
+    const client = makeClient();
+    // A forced refetch fired while the initial load is still in flight must
+    // dedupe onto it, not open a second request.
+    const [a, b] = await Promise.all([
+      client.getRouteConfig("image"),
+      client.getRouteConfig("image", { force: true }),
+    ]);
+    expect(a).toEqual(testRouteConfig);
+    expect(b).toEqual(testRouteConfig);
+    expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(1);
+  });
+
+  it("an overlapping forced refetch that fails never poisons the cache", async () => {
+    let failing = true;
+    mockFetch({
+      routeConfig: () =>
+        failing ? jsonResponse({ error: "boom" }, 500) : jsonResponse(testRouteConfig),
+    });
+    const client = makeClient();
+    // Initial load + a forced refetch that rides it; both reject.
+    await Promise.allSettled([
+      client.getRouteConfig("image"),
+      client.getRouteConfig("image", { force: true }),
+    ]);
+    // The cache must not be stuck on the rejection — the next call refetches.
+    failing = false;
+    await expect(client.getRouteConfig("image")).resolves.toEqual(testRouteConfig);
+  });
+
+  it("a failed forced refresh keeps the cached config for later callers", async () => {
+    let n = 0;
+    const { calls } = mockFetch({
+      routeConfig: () =>
+        n++ === 1 ? jsonResponse({ error: "boom" }, 500) : jsonResponse(testRouteConfig),
+    });
+    const client = makeClient();
+    await client.getRouteConfig("image");
+    await expect(client.getRouteConfig("image", { force: true })).rejects.toThrow();
+    // Stale beats broken: the cached config still serves without a new fetch.
+    await expect(client.getRouteConfig("image")).resolves.toEqual(testRouteConfig);
+    expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(2);
+  });
+
+  it("uploadFiles shares the cache — no second config fetch", async () => {
+    const { calls } = mockFetch();
+    const client = makeClient();
+    await client.getRouteConfig("image");
+    const p = client.uploadFiles("image", [png()]);
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await p;
+    expect(calls.filter((c) => c.pathname.endsWith("/route-config"))).toHaveLength(1);
   });
 });
