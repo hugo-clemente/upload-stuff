@@ -1,6 +1,12 @@
 import { createId } from "@paralleldrive/cuid2";
 
-import { RESERVED_FIELD_NAMES } from "@upload-stuff/core";
+import {
+  DEFAULT_MAX_FILE_COUNT,
+  DEFAULT_MAX_FILE_SIZE,
+  RESERVED_FIELD_NAMES,
+  getFileSizeInBytes,
+  type FileSize,
+} from "@upload-stuff/core";
 import type {
   AdapterTypeInfo,
   CreateUploadStuffConfig,
@@ -26,6 +32,26 @@ const resolveUploadWindowSeconds = (value: number | undefined): number => {
     );
   }
   return seconds;
+};
+
+const resolveDefaultMaxFileCount = (value: number | undefined): number => {
+  const count = value ?? DEFAULT_MAX_FILE_COUNT;
+  if (!Number.isInteger(count) || count < 0) {
+    throw new Error(
+      `upload-stuff: defaultMaxFileCount must be a non-negative integer (got ${value}).`,
+    );
+  }
+  return count;
+};
+
+const resolveDefaultMaxFileSize = (value: FileSize | undefined): FileSize => {
+  const size = value ?? DEFAULT_MAX_FILE_SIZE;
+  if (getFileSizeInBytes(size) <= 0) {
+    throw new Error(
+      `upload-stuff: defaultMaxFileSize must be greater than 0 bytes (got "${value}").`,
+    );
+  }
+  return size;
 };
 
 const defaultFileIdGenerator = createId;
@@ -153,6 +179,8 @@ export type UploadStuff<
   /** The declared custom-field declaration, used to filter persisted values. */
   __fields: TFields | undefined;
   __uploadWindowSeconds: number;
+  __defaultMaxFileCount: number;
+  __defaultMaxFileSize: FileSize;
 };
 
 /**
@@ -197,9 +225,13 @@ export const UploadStuff =
       filePublicUrlGenerator,
       fields,
       uploadWindowSeconds,
+      defaultMaxFileCount,
+      defaultMaxFileSize,
     } = config;
 
     const resolvedUploadWindowSeconds = resolveUploadWindowSeconds(uploadWindowSeconds);
+    const resolvedDefaultMaxFileCount = resolveDefaultMaxFileCount(defaultMaxFileCount);
+    const resolvedDefaultMaxFileSize = resolveDefaultMaxFileSize(defaultMaxFileSize);
 
     // Belt-and-suspenders to the type-level guard above: reject reserved field
     // names at runtime too, so a JS caller (or a cast) can't slip a custom field
@@ -240,6 +272,8 @@ export const UploadStuff =
         filePublicUrlGenerator,
         fields,
         uploadWindowSeconds: resolvedUploadWindowSeconds,
+        defaultMaxFileCount: resolvedDefaultMaxFileCount,
+        defaultMaxFileSize: resolvedDefaultMaxFileSize,
       }),
 
       __storageAdapter: storageAdapter,
@@ -250,5 +284,7 @@ export const UploadStuff =
       __filePublicUrlGenerator: filePublicUrlGenerator,
       __fields: fields,
       __uploadWindowSeconds: resolvedUploadWindowSeconds,
+      __defaultMaxFileCount: resolvedDefaultMaxFileCount,
+      __defaultMaxFileSize: resolvedDefaultMaxFileSize,
     };
   };

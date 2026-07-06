@@ -1,17 +1,25 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { UploadStuffError } from "./errors";
-import type { AnyRouteConfig } from "./router-types";
+import { normalizeRouteConfig, type NormalizedRouteConfig } from "./file-types";
 import type { InitUploadFileData } from "./schemas";
 import { validateFiles } from "./validation";
 
-const config: AnyRouteConfig = {
+const normalize = (
+  config: Parameters<typeof normalizeRouteConfig>[0],
+): NormalizedRouteConfig =>
+  normalizeRouteConfig(config, {
+    defaultMaxFileCount: 20,
+    defaultMaxFileSize: "4MB",
+  });
+
+const config = normalize({
   isPublic: false,
-  type: "image",
   usageContext: "avatars",
+  files: ["image/*"],
   maxFileSize: "5MB",
   maxFileCount: 2,
-};
+});
 
 const file = (overrides: Partial<InitUploadFileData> = {}): InitUploadFileData => ({
   filename: "photo.png",
@@ -21,30 +29,106 @@ const file = (overrides: Partial<InitUploadFileData> = {}): InitUploadFileData =
 });
 
 describe("validateFiles", () => {
-  it("accepts valid files", () => {
+  it("accepts supported files", () => {
     expect(() => validateFiles([file(), file()], config)).not.toThrow();
   });
 
-  it("rejects too many files", () => {
-    expect(() => validateFiles([file(), file(), file()], config)).toThrowError(UploadStuffError);
-  });
-
-  it("rejects any file when maxFileCount is 0", () => {
-    expect(() => validateFiles([file()], { ...config, maxFileCount: 0 })).toThrowError(
-      UploadStuffError,
-    );
-  });
-
-  it("rejects a file over maxFileSize", () => {
-    expect(() => validateFiles([file({ size: 6 * 1024 * 1024 })], config)).toThrowError(
-      UploadStuffError,
-    );
-  });
-
-  it("rejects an unsupported content type", () => {
+  it("rejects unsupported files", () => {
     expect(() => validateFiles([file({ contentType: "application/pdf" })], config)).toThrowError(
       UploadStuffError,
     );
+  });
+
+  it("enforces per-entry size limits", () => {
+    const normalized = normalize({
+      isPublic: false,
+      usageContext: "mixed",
+      files: {
+        "image/*": { maxFileSize: "5MB" },
+        "application/pdf": { maxFileSize: "1MB" },
+      },
+    });
+
+    expect(() =>
+      validateFiles([file({ filename: "doc.pdf", contentType: "application/pdf", size: 2 * 1024 * 1024 })], normalized),
+    ).toThrowError(/exceeds maximum size of 1MB/);
+  });
+
+  it("enforces per-entry count limits", () => {
+    const normalized = normalize({
+      isPublic: false,
+      usageContext: "mixed",
+      files: { "image/*": { maxFileCount: 1 } },
+      maxFileCount: 10,
+    });
+
+    expect(() => validateFiles([file(), file({ filename: "b.png" })], normalized)).toThrowError(
+      /Too many files of type image\/\*/,
+    );
+  });
+
+  it("counts exact and wildcard buckets separately", () => {
+    const normalized = normalize({
+      isPublic: false,
+      usageContext: "mixed",
+      files: {
+        "image/png": { maxFileCount: 1 },
+        "image/*": { maxFileCount: 1 },
+      },
+      maxFileCount: 10,
+    });
+
+    expect(() =>
+      validateFiles(
+        [
+          file({ filename: "a.png", contentType: "image/png" }),
+          file({ filename: "b.jpg", contentType: "image/jpeg" }),
+        ],
+        normalized,
+      ),
+    ).not.toThrow();
+
+    expect(() =>
+      validateFiles(
+        [
+          file({ filename: "a.png", contentType: "image/png" }),
+          file({ filename: "b.png", contentType: "image/png" }),
+        ],
+        normalized,
+      ),
+    ).toThrowError(/Too many files of type image\/png/);
+  });
+
+  it("enforces the route batch cap", () => {
+    expect(() => validateFiles([file(), file(), file()], config)).toThrowError(
+      /Too many files. Maximum allowed: 2/,
+    );
+  });
+
+  it("rejects any file when maxFileCount is 0", () => {
+    const normalized = normalize({
+      isPublic: false,
+      usageContext: "avatars",
+      files: ["image/*"],
+      maxFileCount: 0,
+    });
+
+    expect(() => validateFiles([file()], normalized)).toThrowError(
+      /Too many files. Maximum allowed: 0/,
+    );
+  });
+
+  it("falls back application/octet-stream through a blob route", () => {
+    const normalized = normalize({
+      isPublic: false,
+      usageContext: "raw",
+      files: ["blob"],
+      maxFileSize: "1MB",
+    });
+
+    expect(() =>
+      validateFiles([file({ filename: "raw.bin", contentType: "application/octet-stream" })], normalized),
+    ).not.toThrow();
   });
 
   it("throws BAD_REQUEST on rejection", () => {

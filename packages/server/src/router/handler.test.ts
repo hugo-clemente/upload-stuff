@@ -105,6 +105,150 @@ describe("fileRouteHandlers", () => {
     expect(receivedKeys).not.toContain("ctx");
     expect(receivedKeys.sort()).toEqual(["files", "input", "middlewareData"]);
   });
+
+  it("returns normalized route config without the legacy type property", () => {
+    const { handlers } = setup();
+    const config = handlers.getConfig({ endpoint: "avatars" });
+
+    expect(config.files["image/*"]).toEqual({ maxFileSize: "5MB" });
+    expect(config).not.toHaveProperty("type");
+  });
+
+  it("throws when getConfig is called for an unknown endpoint", () => {
+    const { handlers } = setup();
+    expect(() => handlers.getConfig({ endpoint: "nope" })).toThrow(UploadStuffError);
+    expect(() => handlers.getConfig({ endpoint: "nope" })).toThrow(/not found/);
+  });
+
+  it("throws at construction for duplicate normalized file type keys", () => {
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => fakeStorageAdapter(),
+      databaseAdapter: () => fakeDatabaseAdapter(),
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+    });
+    const route: AnyFileRoute = {
+      ...makeRoute(() => ({})),
+      routeConfig: {
+        isPublic: false,
+        usageContext: "avatars",
+        files: ["Image/*" as "image/*", "image/*"],
+      },
+    };
+
+    expect(() => fileRouteHandlers({ fileRouter: { avatars: route }, uploadStuff })).toThrow(
+      /duplicate file type key/,
+    );
+  });
+
+  it("rejects unsupported content types before middleware and fields run", async () => {
+    let middlewareCalls = 0;
+    let fieldCalls = 0;
+    const route: AnyFileRoute = {
+      ...makeRoute(() => ({})),
+      middleware: () => {
+        middlewareCalls++;
+        return {};
+      },
+      fields: () => {
+        fieldCalls++;
+        return {};
+      },
+    };
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => fakeStorageAdapter(),
+      databaseAdapter: () => fakeDatabaseAdapter(),
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+    });
+    const handlers = fileRouteHandlers({ fileRouter: { avatars: route }, uploadStuff });
+
+    await expect(
+      handlers.initUpload(
+        "avatars",
+        { files: [{ filename: "doc.pdf", contentType: "application/pdf", size: 1024 }], input: null },
+        ctx,
+      ),
+    ).rejects.toThrow(UploadStuffError);
+    expect(middlewareCalls).toBe(0);
+    expect(fieldCalls).toBe(0);
+  });
+
+  it("normalizes request content type in init response, DB row, and presign input", async () => {
+    const created: DatabaseFile<string>[] = [];
+    let presignContentType: string | undefined;
+    const databaseAdapter: DatabaseAdapter = {
+      ...fakeDatabaseAdapter(),
+      createFiles: async ({ files }) => {
+        created.push(...files);
+      },
+    };
+    const storageAdapter: StorageAdapter = {
+      ...fakeStorageAdapter(),
+      generatePresignedUpload: async ({ key, contentType }) => {
+        presignContentType = contentType;
+        return { uploadUrl: `https://upload.test/${key}` };
+      },
+    };
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => storageAdapter,
+      databaseAdapter: () => databaseAdapter,
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+    });
+    const handlers = fileRouteHandlers({
+      fileRouter: { avatars: makeRoute(() => ({})) },
+      uploadStuff,
+    });
+
+    const init = await handlers.initUpload(
+      "avatars",
+      {
+        files: [{ filename: "a.png", contentType: "Image/PNG; charset=binary", size: 1024 }],
+        input: null,
+      },
+      ctx,
+    );
+
+    expect(init.files[0]!.contentType).toBe("image/png");
+    expect(created[0]!.contentType).toBe("image/png");
+    expect(presignContentType).toBe("image/png");
+  });
+
+  it("folds a malformed content type to the catch-all for storage on a blob route", async () => {
+    const created: DatabaseFile<string>[] = [];
+    let presignContentType: string | undefined;
+    const databaseAdapter: DatabaseAdapter = {
+      ...fakeDatabaseAdapter(),
+      createFiles: async ({ files }) => {
+        created.push(...files);
+      },
+    };
+    const storageAdapter: StorageAdapter = {
+      ...fakeStorageAdapter(),
+      generatePresignedUpload: async ({ key, contentType }) => {
+        presignContentType = contentType;
+        return { uploadUrl: `https://upload.test/${key}` };
+      },
+    };
+    const uploadStuff = UploadStuff()({
+      storageAdapter: () => storageAdapter,
+      databaseAdapter: () => databaseAdapter,
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+    });
+    const blobRoute: AnyFileRoute = {
+      ...makeRoute(() => ({})),
+      routeConfig: { isPublic: false, usageContext: "avatars", files: ["blob"] },
+    };
+    const handlers = fileRouteHandlers({ fileRouter: { avatars: blobRoute }, uploadStuff });
+
+    const init = await handlers.initUpload(
+      "avatars",
+      { files: [{ filename: "x.bin", contentType: "totally garbage", size: 8 }], input: null },
+      ctx,
+    );
+
+    expect(init.files[0]!.contentType).toBe("application/octet-stream");
+    expect(created[0]!.contentType).toBe("application/octet-stream");
+    expect(presignContentType).toBe("application/octet-stream");
+  });
 });
 
 describe("presigned upload headers (#5)", () => {

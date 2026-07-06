@@ -1,15 +1,5 @@
 export const DEFAULT_BASE_PATH = "/api/upload-stuff";
 
-export const acceptedFileTypes = {
-  image: ["image/jpeg", "image/png", "image/gif", "image/webp"],
-};
-export type AcceptedFileType = keyof typeof acceptedFileTypes;
-
-export const getValidMimeTypes = (type: AcceptedFileType | AcceptedFileType[]): string[] => {
-  const types = Array.isArray(type) ? type : [type];
-  return types.flatMap((t) => acceptedFileTypes[t]);
-};
-
 type FileSizeUnit = "B" | "KB" | "MB" | "GB" | "TB";
 export type FileSize = `${number}${FileSizeUnit}`;
 

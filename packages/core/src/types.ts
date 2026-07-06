@@ -1,4 +1,5 @@
 /* oxlint-disable @typescript-eslint/no-explicit-any */
+import type { FileSize } from "./utils/helpers";
 import type { Json } from "./utils/types";
 
 /** Declared custom-field value types. */
@@ -276,6 +277,8 @@ export type UploadStuffConfig<
   fields?: TFields;
   /** Window (seconds) for presign expiry, completion deadline, and cleanup. */
   uploadWindowSeconds: number;
+  defaultMaxFileCount: number;
+  defaultMaxFileSize: FileSize;
 };
 
 /**
@@ -298,4 +301,6 @@ export type CreateUploadStuffConfig<
   /** Window in seconds (default 3600, 1..604800) for presign expiry, completion
    * deadline, and abandoned-row cleanup. */
   uploadWindowSeconds?: number;
+  defaultMaxFileCount?: number;
+  defaultMaxFileSize?: FileSize;
 };

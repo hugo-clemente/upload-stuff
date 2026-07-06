@@ -11,7 +11,7 @@ const f = createUploadStuffRouter<Context, typeof uploadStuff>();
 export const fileRouter = {
   image: f({
     isPublic: true,
-    type: "image",
+    files: ["image/*"],
     usageContext: "image",
     maxFileSize: "8MB",
     maxFileCount: 1,
@@ -21,6 +21,21 @@ export const fileRouter = {
     // user id. userId is plain metadata (the gallery filters by it); it carries no
     // auth weight — completion is guarded by the batch token.
     .fields(({ input, ctx }) => ({ caption: input.caption, userId: ctx.userId }))
+    .middleware(({ ctx }) => ({ userId: ctx.userId }))
+    .onUploadComplete(({ files, middlewareData }) => ({
+      owner: middlewareData.userId,
+      count: files.length,
+    }))
+    .build(),
+  document: f({
+    isPublic: false,
+    usageContext: "document",
+    files: {
+      "image/*": { maxFileSize: "8MB", maxFileCount: 4 },
+      "application/pdf": { maxFileSize: "16MB" },
+    },
+  })
+    .fields(({ ctx }) => ({ userId: ctx.userId }))
     .middleware(({ ctx }) => ({ userId: ctx.userId }))
     .onUploadComplete(({ files, middlewareData }) => ({
       owner: middlewareData.userId,

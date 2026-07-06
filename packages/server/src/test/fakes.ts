@@ -59,8 +59,8 @@ export const makeRoute = (onComplete: () => unknown): AnyFileRoute => ({
   $types: {} as AnyFileRoute["$types"],
   routeConfig: {
     isPublic: false,
-    type: "image",
     usageContext: "avatars",
+    files: ["image/*"],
     maxFileSize: "5MB",
   },
   inputParser: passthroughParser,

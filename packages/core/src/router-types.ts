@@ -1,7 +1,8 @@
 /* oxlint-disable @typescript-eslint/no-explicit-any */
 import type * as Standard from "@standard-schema/spec";
 
-import type { AcceptedFileType, FileSize } from "./utils/helpers";
+import type { FilesConfig } from "./file-types";
+import type { FileSize } from "./utils/helpers";
 import type { Json } from "./utils/types";
 import type { FieldsDeclaration, InferFieldValues } from "./types";
 import type { InitUploadFileData, ToUploadFileData, UploadedFileData } from "./schemas";
@@ -11,9 +12,9 @@ export type ErrorMessage<TError extends string> = TError;
 
 export type RouteConfig<TFileUsageContext extends string> = {
   isPublic: boolean;
-  type: AcceptedFileType | AcceptedFileType[];
   usageContext: TFileUsageContext;
-  maxFileSize: FileSize;
+  files: FilesConfig;
+  maxFileSize?: FileSize;
   maxFileCount?: number;
 };
 export type AnyRouteConfig = RouteConfig<string>;
