@@ -30,6 +30,10 @@
       "types": "./dist/next/index.d.ts",
       "import": "./dist/next.js"
     },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
+    },
     "./adapters/s3": {
       "types": "./dist/adapters/s3.d.ts",
       "import": "./dist/adapters/s3.js"

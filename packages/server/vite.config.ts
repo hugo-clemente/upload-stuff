@@ -6,6 +6,7 @@ export default defineConfig({
     entry: {
       index: "src/index.ts",
       next: "src/next/index.ts",
+      node: "src/node.ts",
       "adapters/s3": "src/adapters/s3.ts",
       "adapters/prisma": "src/adapters/prisma.ts",
     },
