@@ -27,7 +27,7 @@ const uploadStuff = UploadStuff<"avatar">({
 
 const f = createUploadStuffRouter<{ userId: string }, typeof uploadStuff>();
 
-const avatar = f({ isPublic: true, type: "image", usageContext: "avatar", maxFileSize: "4MB" })
+const avatar = f({ isPublic: true, files: ["image/*"], usageContext: "avatar", maxFileSize: "4MB" })
   .middleware(({ ctx }) => ({ uploadedBy: ctx.userId }))
   .onUploadComplete(({ middlewareData }) => ({ owner: middlewareData.uploadedBy }))
   .build();

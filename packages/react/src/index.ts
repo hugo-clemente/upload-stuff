@@ -5,14 +5,14 @@ import type {
   AnyFileRoute,
   CompleteUploadResult,
   EndpointArg,
-  RouteConfig,
+  NormalizedRouteConfig,
   UploadCallbacks,
   UploadStuffClient,
   UploadStuffRouter,
   inferRouteInput,
   inferRouteServerData,
 } from "@upload-stuff/client";
-import { getAcceptFromType, mergeHeaders, resolveEndpoint } from "@upload-stuff/client";
+import { getAcceptFromRouteConfig, mergeHeaders, resolveEndpoint } from "@upload-stuff/client";
 
 export type UseUploadStuffOptions<TRoute extends AnyFileRoute> = UploadCallbacks<TRoute> & {
   /**
@@ -65,7 +65,7 @@ export type UseUploadStuffReturn<TRoute extends AnyFileRoute> = {
    * Abort the in-flight upload. No-op when idle.
    */
   abort: () => void;
-  routeConfig?: RouteConfig<TRoute["$types"]["fileUsageContext"]>;
+  routeConfig?: NormalizedRouteConfig<TRoute["$types"]["fileUsageContext"]>;
   accept?: string;
 };
 
@@ -75,7 +75,7 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
   const useRouteConfig = <TEndpoint extends keyof TFileRouter>(endpoint: TEndpoint) => {
     type State = {
       endpoint: TEndpoint;
-      data?: TFileRouter[TEndpoint]["routeConfig"];
+      data?: NormalizedRouteConfig<TFileRouter[TEndpoint]["$types"]["fileUsageContext"]>;
       error?: Error;
       isLoading: boolean;
     };
@@ -233,7 +233,7 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
     const { data: routeConfig, isLoading } = useRouteConfig(resolvedEndpoint);
 
     const accept = useMemo(
-      () => (routeConfig ? getAcceptFromType(routeConfig.type) : undefined),
+      () => (routeConfig ? getAcceptFromRouteConfig(routeConfig) : undefined),
       [routeConfig],
     );
 

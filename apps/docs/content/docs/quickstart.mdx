@@ -84,7 +84,7 @@ const f = createUploadStuffRouter<Context, typeof uploadStuff>();
 export const fileRouter = {
   avatar: f({
     isPublic: true,
-    type: "image",
+    files: ["image/*"],
     usageContext: "avatar",
     maxFileSize: "4MB",
     maxFileCount: 1,

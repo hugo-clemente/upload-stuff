@@ -46,7 +46,7 @@ type Context = { userId: string };
 const f = createUploadStuffRouter<Context, typeof uploadStuff>();
 
 const fileRouter = {
-  avatar: f({ isPublic: true, type: "image", usageContext: "avatar", maxFileSize: "4MB" })
+  avatar: f({ isPublic: true, files: ["image/*"], usageContext: "avatar", maxFileSize: "4MB" })
     .input(z.object({ folderId: z.string() }))
     .middleware(({ ctx }) => ({ uploadedBy: ctx.userId }))
     .onUploadComplete(({ input, middlewareData }) => {
@@ -111,7 +111,7 @@ type Context = { userId: string };
 const f = createUploadStuffRouter<Context, typeof uploadStuff>();
 
 const fileRouter = {
-  avatar: f({ isPublic: true, type: "image", usageContext: "avatar", maxFileSize: "4MB" })
+  avatar: f({ isPublic: true, files: ["image/*"], usageContext: "avatar", maxFileSize: "4MB" })
     .middleware(({ ctx }) => ({ uploadedBy: ctx.userId }))
     .onUploadComplete(({ middlewareData }) => {
       // `.middleware()` returned `{ uploadedBy }`, so `.role` does not exist:
