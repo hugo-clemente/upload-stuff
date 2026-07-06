@@ -147,7 +147,7 @@ export default defineConfig({
   // Test config migrated from the former root vitest.config.ts. Each project
   // keeps its own test block in its package-level vite.config.ts.
   test: {
-    projects: ["packages/core", "packages/server", "packages/client"],
+    projects: ["packages/core", "packages/server", "packages/client", "packages/react"],
   },
 
   // Replaces turbo.json. `vp run` runs package.json scripts in workspace

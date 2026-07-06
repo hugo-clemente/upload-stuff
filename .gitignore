@@ -8,6 +8,10 @@ dist
 out
 next-env.d.ts
 
+# Generated test coverage + editor config
+/coverage/
+.vscode/
+
 # Local planning docs (brainstorms/plans/specs) — kept locally, not tracked.
 # Anchored to root so apps/docs (the docs site) stays tracked.
 /docs/

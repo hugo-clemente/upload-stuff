@@ -1,3 +1,28 @@
-// The "use client" directive is injected into every output chunk by tsup's
-// `banner` (see tsup.config.ts) — esbuild does not preserve a source-level one.
-export * from "./impl";
+// Framework-free engine surface.
+export { createUploadStuffClient, getAcceptFromType, type UploadStuffClient } from "./client";
+export { preprocessImages } from "./compress-images";
+export type {
+  CreateUploadStuffClientOptions,
+  UploadCallbacks,
+  UploadFilesArgs,
+  UploadFilesOptions,
+} from "./types";
+export { resolveEndpoint, type EndpointArg, type RouteRegistry } from "./endpoint";
+export { mergeHeaders } from "./headers";
+export type { ProgressGranularity } from "./progress";
+
+// Re-export the core types that appear in this package's public API, so
+// frontend consumers and framework bindings never import @upload-stuff/core
+// directly.
+export type {
+  AnyFileRoute,
+  AnyRouteConfig,
+  CompleteUploadResult,
+  InitUploadResult,
+  RouteConfig,
+  ToUploadFileData,
+  UploadStuffRouter,
+  UploadedFileData,
+  inferRouteInput,
+  inferRouteServerData,
+} from "@upload-stuff/core";

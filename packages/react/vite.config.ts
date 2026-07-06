@@ -1,7 +1,6 @@
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
-  // Library build, migrated from tsup.config.ts. `vp pack` (tsdown) replaces tsup.
   pack: {
     entry: {
       index: "src/index.ts",
@@ -10,11 +9,14 @@ export default defineConfig({
     dts: true,
     clean: true,
     sourcemap: true,
+    // Hooks package: every chunk must open with the RSC client directive.
+    banner: { js: '"use client";' },
     // Emit .js/.d.ts (not .mjs/.d.mts) to match the package.json `exports`.
     fixedExtension: false,
   },
-  // Migrated from the former vitest.config.ts; matches core/server.
   test: {
+    // @testing-library/react needs a DOM.
+    environment: "jsdom",
     typecheck: { enabled: true, tsconfig: "./tsconfig.json" },
   },
 });

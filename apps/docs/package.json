@@ -13,6 +13,7 @@
   "dependencies": {
     "@upload-stuff/client": "workspace:*",
     "@upload-stuff/core": "workspace:*",
+    "@upload-stuff/react": "workspace:*",
     "@upload-stuff/server": "workspace:*",
     "fumadocs-core": "16.10.2",
     "fumadocs-mdx": "15.0.12",
