@@ -49,7 +49,9 @@ export const mockFetch = ({
   routeConfig = () => jsonResponse(testRouteConfig),
   init = () => jsonResponse(testUploadPlan),
   complete = () => jsonResponse(testCompleteResult),
-}: Partial<Record<"routeConfig" | "init" | "complete", (req: Request) => Response>> = {}) => {
+}: Partial<
+  Record<"routeConfig" | "init" | "complete", (req: Request) => Response | Promise<Response>>
+> = {}) => {
   const calls: { pathname: string; request: Request }[] = [];
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, requestInit?: RequestInit) => {
     const request = new Request(input as any, requestInit);

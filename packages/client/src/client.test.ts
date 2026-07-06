@@ -343,6 +343,147 @@ describe("uploadFiles — abort matrix", () => {
   });
 });
 
+describe("wire URLs (post-hono)", () => {
+  it("builds default-base-path URLs", async () => {
+    const { calls } = mockFetch();
+    const p = makeClient().uploadFiles("image", [png()], {});
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await p;
+    expect(calls.map((c) => c.pathname)).toEqual([
+      "/api/upload-stuff/image/route-config",
+      "/api/upload-stuff/image/init-upload",
+      "/api/upload-stuff/image/complete-upload",
+    ]);
+  });
+
+  it("respects a custom basePath and a baseURL with a path", async () => {
+    const { calls } = mockFetch();
+    const client = createUploadStuffClient<any>({
+      baseURL: "https://app.example.com/sub/",
+      basePath: "/custom-base",
+    });
+    const p = client.uploadFiles("image", [png()], {});
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await p;
+    // absolute basePath replaces the baseURL path — same as the previous hc base
+    expect(calls[0]!.pathname).toBe("/custom-base/image/route-config");
+  });
+
+  it("percent-encodes endpoint names", async () => {
+    const { calls } = mockFetch();
+    const p = makeClient().uploadFiles("a/b" as any, [png()], {});
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await p;
+    expect(calls[0]!.pathname).toBe("/api/upload-stuff/a%2Fb/route-config");
+  });
+});
+
+describe("non-OK responses (post-hono)", () => {
+  it("uses the { error } body as the message and attaches status/data", async () => {
+    mockFetch({ init: () => jsonResponse({ error: "quota exceeded" }, 401) });
+    const onUploadError = vi.fn();
+    await expect(
+      makeClient().uploadFiles("image", [png()], { onUploadError }),
+    ).rejects.toMatchObject({ message: "quota exceeded", status: 401 });
+    expect(onUploadError.mock.calls[0]![0]).toMatchObject({
+      message: "quota exceeded",
+      status: 401,
+    });
+  });
+
+  it("falls back to body text, then to the status line", async () => {
+    mockFetch({ init: () => new Response("plain failure", { status: 400 }) });
+    await expect(makeClient().uploadFiles("image", [png()], {})).rejects.toMatchObject({
+      message: "plain failure",
+    });
+
+    mockFetch({ init: () => new Response(null, { status: 400 }) });
+    await expect(makeClient().uploadFiles("image", [png()], {})).rejects.toThrow(/^400/);
+  });
+});
+
+describe("abort wiring (post-hono)", () => {
+  it("passes the signal to init-upload but not to complete-upload", async () => {
+    let initSignal: AbortSignal | undefined;
+    let completeSignal: AbortSignal | undefined;
+    mockFetch({
+      init: (r) => {
+        initSignal = r.signal;
+        return jsonResponse(testUploadPlan);
+      },
+      complete: (r) => {
+        completeSignal = r.signal;
+        return jsonResponse(testCompleteResult);
+      },
+    });
+    const controller = new AbortController();
+    const done = makeClient().uploadFiles("image", [png()], { signal: controller.signal });
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+    await done;
+    // Aborting after completion: the init request carried the caller's signal
+    // (goes aborted with it); the complete request must NOT have (stays fresh).
+    controller.abort();
+    expect(initSignal!.aborted).toBe(true);
+    expect(completeSignal!.aborted).toBe(false);
+  });
+
+  it("treats completion errors as upload errors even if the caller aborts during completion", async () => {
+    const controller = new AbortController();
+    const onUploadAborted = vi.fn();
+    const onUploadError = vi.fn();
+    mockFetch({
+      complete: () => {
+        // Completion is already the source of truth. A late caller abort must
+        // not mask a real complete-upload failure as "Upload aborted.".
+        controller.abort();
+        return jsonResponse({ error: "complete failed" }, 500);
+      },
+    });
+
+    const p = makeClient().uploadFiles("image", [png()], {
+      signal: controller.signal,
+      onUploadAborted,
+      onUploadError,
+    });
+    await waitForXhrs(1);
+    MockXHR.instances[0]!.respond(200);
+
+    await expect(p).rejects.toMatchObject({ message: "complete failed", status: 500 });
+    expect(onUploadAborted).not.toHaveBeenCalled();
+    expect(onUploadError.mock.calls[0]![0]).toMatchObject({
+      message: "complete failed",
+      status: 500,
+    });
+  });
+
+  it("cancels a hung init-upload on abort and rejects with 'Upload aborted.'", async () => {
+    const onUploadAborted = vi.fn();
+    let initStarted!: () => void;
+    const started = new Promise<void>((resolve) => (initStarted = resolve));
+    mockFetch({
+      init: (r) =>
+        new Promise<Response>((_resolve, reject) => {
+          initStarted();
+          r.signal.addEventListener("abort", () => reject(new DOMException("x", "AbortError")));
+        }),
+    });
+    const controller = new AbortController();
+    const p = makeClient().uploadFiles("image", [png()], {
+      signal: controller.signal,
+      onUploadAborted,
+    });
+    const rejection = expect(p).rejects.toThrow("Upload aborted.");
+    await started; // init fetch is in flight — now abort mid-request
+    controller.abort();
+    await rejection;
+    expect(onUploadAborted).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("getRouteConfig", () => {
   it("returns the route config", async () => {
     mockFetch();
