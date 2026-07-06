@@ -7,7 +7,7 @@
 # upload-stuff
 
 A typed file-upload library built on presigned S3 uploads, a typed
-[Hono](https://hono.dev) RPC layer, and React hooks. Define a file router on the
+HTTP wire contract, and React hooks. Define a file router on the
 server, wire it into your Next.js App Router (or any fetch-compatible runtime),
 and call `useUploadStuff` from the client.
 

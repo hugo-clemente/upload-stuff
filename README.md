@@ -1,12 +1,12 @@
 # upload-stuff
 
-A file-upload library built on presigned S3 uploads, a typed [Hono](https://hono.dev/) RPC layer, and React hooks. Define a typed file router on the server, wire it into your Next.js App Router (or any fetch-compatible runtime), and call `useUploadStuff` from the client.
+A file-upload library built on presigned S3 uploads, a typed HTTP wire contract, and React hooks. Define a typed file router on the server, wire it into your Next.js App Router (or any fetch-compatible runtime), and call `useUploadStuff` from the client.
 
 ## Packages
 
 | Package                | Description                                                               |
 | ---------------------- | ------------------------------------------------------------------------- |
-| `@upload-stuff/server` | Server runtime (Hono), Next.js App Router handler, S3 and Prisma adapters |
+| `@upload-stuff/server` | Server runtime, fetch/Node/Next.js handlers, S3 and Prisma adapters       |
 | `@upload-stuff/client` | Framework-free upload engine (validation, presigned PUT, progress, abort) |
 | `@upload-stuff/react`  | React hooks over the engine                                               |
 | `@upload-stuff/core`   | Isomorphic types, Zod schemas, errors and utils (comes transitively)      |
@@ -153,7 +153,7 @@ export const { GET, POST } = toNextJsHandler({
 });
 ```
 
-`toNextJsHandler` returns `{ GET, POST }` route handlers backed by `app.fetch` from Hono. It has no dependency on the `next` npm package.
+`toNextJsHandler` returns `{ GET, POST }` route handlers backed by the library's own fetch handler (`toFetchHandler`). It has no dependency on the `next` npm package — and any fetch-compatible runtime or Node framework can use `toFetchHandler` / `toNodeHandler` directly (see the Handlers docs).
 
 ## Client usage
 

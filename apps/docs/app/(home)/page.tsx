@@ -24,7 +24,7 @@ export default function HomePage() {
             Typed file uploads for React &amp; Next.js
           </h1>
           <p className="text-lg text-fd-muted-foreground">
-            Presigned S3 uploads, a typed Hono RPC layer, and React hooks. Define
+            Presigned S3 uploads, a typed HTTP wire contract, and React hooks. Define
             a file router on the server &mdash; the client hook types itself from
             it.
           </p>

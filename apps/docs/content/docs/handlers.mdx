@@ -1,0 +1,80 @@
+---
+title: Handlers
+description: Mount upload-stuff in Next.js, NestJS, Express, Hono, or any fetch runtime.
+---
+
+upload-stuff's HTTP layer is a single fetch handler — `(request: Request) => Promise<Response>` — serving three JSON endpoints under `basePath` (default `/api/upload-stuff`). Every framework integration is a thin wrapper around it. File bytes never pass through your server; they go straight to storage via presigned URLs.
+
+## Next.js (App Router)
+
+```ts
+// app/api/upload-stuff/[...uploadStuff]/route.ts
+import { toNextJsHandler } from "@upload-stuff/server/next";
+import { uploadStuff } from "@/lib/upload-stuff";
+import { fileRouter } from "@/lib/file-router";
+
+export const { GET, POST } = toNextJsHandler({
+  uploadStuff,
+  fileRouter,
+  createContext: async ({ headers }) => ({ userId: headers.get("x-user-id") ?? "anon" }),
+});
+```
+
+## Any fetch runtime (Bun, Deno, Cloudflare Workers…)
+
+```ts
+import { toFetchHandler } from "@upload-stuff/server";
+
+const handler = toFetchHandler({ uploadStuff, fileRouter, createContext });
+
+// Bun
+Bun.serve({ fetch: handler });
+// Cloudflare Workers
+export default { fetch: handler };
+```
+
+## Hono
+
+```ts
+import { Hono } from "hono";
+import { toFetchHandler } from "@upload-stuff/server";
+
+const handler = toFetchHandler({ uploadStuff, fileRouter, createContext });
+
+const app = new Hono();
+// Keep the route pattern aligned with basePath (default /api/upload-stuff).
+app.all("/api/upload-stuff/*", (c) => handler(c.req.raw));
+```
+
+## Express
+
+```ts
+import express from "express";
+import { toNodeHandler } from "@upload-stuff/server/node";
+
+const app = express();
+app.use(toNodeHandler({ uploadStuff, fileRouter, createContext }));
+```
+
+Mount order doesn't matter: if `express.json()` already consumed the request stream, the handler reuses the parsed `req.body`. Mounting under a prefix (`app.use("/api/upload-stuff", …)`) also works — the handler reads `req.originalUrl`.
+
+## NestJS (Express platform)
+
+Register the handler as global middleware in your bootstrap — Nest's built-in body parser is handled the same way as Express's:
+
+```ts
+// main.ts
+import { NestFactory } from "@nestjs/core";
+import { toNodeHandler } from "@upload-stuff/server/node";
+import { AppModule } from "./app.module";
+
+const app = await NestFactory.create(AppModule);
+app.use(toNodeHandler({ uploadStuff, fileRouter, createContext }));
+await app.listen(3000);
+```
+
+`createContext` receives the request headers on every call — derive your auth/user context there, exactly as in the Next.js handler.
+
+## Error contract
+
+Handled errors respond with status 400/401/403 and the JSON envelope `{ "error": string }`. Unknown exceptions propagate to your framework's error handling (a 500). Requests outside the three routes return `404 Not Found`.
