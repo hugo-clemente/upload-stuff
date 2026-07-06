@@ -4,7 +4,6 @@
   "description": "Server runtime, Next.js handler and S3/Prisma adapters for upload-stuff.",
   "keywords": [
     "file-upload",
-    "hono",
     "nextjs",
     "prisma",
     "s3",
@@ -30,6 +29,10 @@
       "types": "./dist/next/index.d.ts",
       "import": "./dist/next.js"
     },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
+    },
     "./adapters/s3": {
       "types": "./dist/adapters/s3.d.ts",
       "import": "./dist/adapters/s3.js"
@@ -49,10 +52,8 @@
     "lint": "vp lint ."
   },
   "dependencies": {
-    "@hono/zod-validator": "^0.7.5",
     "@paralleldrive/cuid2": "^2.2.2",
     "@upload-stuff/core": "workspace:*",
-    "hono": "^4.10.7",
     "zod": "4.1.11"
   },
   "devDependencies": {

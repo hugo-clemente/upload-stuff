@@ -1,7 +1,4 @@
 /* oxlint-disable @typescript-eslint/no-explicit-any */
-import { hc, parseResponse } from "hono/client";
-
-import type { UploadStuffHTTPServerType } from "@upload-stuff/server/next";
 import type {
   AnyFileRoute,
   AnyRouteConfig,
@@ -28,14 +25,38 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
   options: CreateUploadStuffClientOptions,
 ) => {
   const basePath = options.basePath ?? DEFAULT_BASE_PATH;
-  const honoClient = hc<UploadStuffHTTPServerType>(
-    new URL(basePath, options.baseURL).toString(),
-  );
+  // Same base resolution as the previous hc(...) client: an absolute basePath
+  // replaces any path on baseURL. Trailing slash stripped so joins stay clean.
+  const base = new URL(basePath, options.baseURL).toString().replace(/\/$/, "");
+  const endpointUrl = (endpoint: string, action: string) =>
+    `${base}/${encodeURIComponent(endpoint)}/${action}`;
+
+  const responseError = async (res: Response): Promise<Error> => {
+    let message = `${res.status} ${res.statusText}`;
+    let data: unknown;
+    try {
+      if (res.headers.get("content-type")?.includes("json")) {
+        data = await res.json();
+        const serverMessage = (data as { error?: unknown } | null)?.error;
+        if (typeof serverMessage === "string") message = serverMessage;
+      } else {
+        const text = await res.text();
+        if (text) message = text;
+      }
+    } catch {
+      // unreadable body — keep the status-line fallback
+    }
+    return Object.assign(new Error(message), { status: res.status, data });
+  };
+
+  const requestJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
+    const res = await fetch(url, init);
+    if (!res.ok) throw await responseError(res);
+    return (await res.json()) as T;
+  };
 
   const fetchRouteConfig = (endpoint: string) =>
-    parseResponse(
-      honoClient[":endpoint"]["route-config"].$get({ param: { endpoint } }),
-    ) as unknown as Promise<AnyRouteConfig>;
+    requestJson<AnyRouteConfig>(endpointUrl(endpoint, "route-config"));
 
   // Config is fetched once per endpoint and cached for the client's lifetime.
   // Two maps, kept distinct on purpose: `good` holds the last *resolved* config
@@ -106,6 +127,7 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
     const requestHeaders = mergeHeaders(opts.headers);
     const signal = opts.signal;
     let onAbort: (() => void) | undefined;
+    let abortGoverns = true;
     // In-flight PUT XHRs, so an abort can cancel the transfer mid-file.
     let currentXhrs: XMLHttpRequest[] = [];
 
@@ -155,15 +177,16 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
       // Bail before init-upload creates server-side state we'd then orphan.
       if (signal?.aborted) throw new Error("Upload aborted.");
 
-      const uploadPlan = (await parseResponse(
-        honoClient[":endpoint"]["init-upload"].$post(
-          {
-            param: { endpoint: resolved },
-            json: { input: opts.input ?? null, files: meta } as any,
-          },
-          { headers: requestHeaders },
-        ),
-      )) as unknown as InitUploadResult;
+      const uploadPlan = await untilAbort(
+        requestJson<InitUploadResult>(endpointUrl(resolved, "init-upload"), {
+          method: "POST",
+          headers: { "content-type": "application/json", ...requestHeaders },
+          body: JSON.stringify({ input: opts.input ?? null, files: meta }),
+          // Cancels the request itself on abort; untilAbort keeps the
+          // rejection prompt and the shared route-config semantics unchanged.
+          signal,
+        }),
+      );
 
       const totalBytes = preparedFiles.reduce((acc, f) => acc + f.size, 0);
       opts.onUploadProgress?.(0);
@@ -226,12 +249,16 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
         throw new Error("Upload aborted.");
       }
 
-      const verified = (await parseResponse(
-        honoClient[":endpoint"]["complete-upload"].$post(
-          { param: { endpoint: resolved }, json: { batchToken: uploadPlan.batchToken } },
-          { headers: requestHeaders },
-        ),
-      )) as unknown as CompleteUploadResult<any>;
+      abortGoverns = false;
+
+      const verified = await requestJson<CompleteUploadResult<any>>(
+        endpointUrl(resolved, "complete-upload"),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", ...requestHeaders },
+          body: JSON.stringify({ batchToken: uploadPlan.batchToken }),
+        },
+      );
 
       // Only report 100% on success — a failed/aborted upload must not
       // leave the consumer's progress UI showing a completed bar.
@@ -239,9 +266,13 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
       opts.onClientUploadComplete?.(verified as any);
       return verified;
     } catch (e) {
-      const err = e instanceof Error ? e : new Error("An error occurred during upload.");
-      // An abort reports via onUploadAborted, never as an error.
-      if (signal?.aborted) reportAbort();
+      const aborted = abortGoverns && signal?.aborted;
+      const err = aborted
+        ? new Error("Upload aborted.")
+        : e instanceof Error
+          ? e
+          : new Error("An error occurred during upload.");
+      if (aborted) reportAbort();
       else opts.onUploadError?.(err);
       throw err;
     } finally {
