@@ -156,7 +156,7 @@ export type UploadStuff<
 };
 
 /**
- * Erased instance type used by the internal server layer (handler / http-server),
+ * Erased instance type used by the internal server layer (handler / fetch-handler),
  * which only consults the `__*` members. `serverUtils` is the consumer-facing API
  * and is intentionally left opaque here: its typed `uploadFile` signature uses
  * `Omit<DatabaseFile<…, TFields>, …>`, which would otherwise block a concrete
