@@ -166,16 +166,10 @@ importers:
       browser-image-compression:
         specifier: ^2.0.2
         version: 2.0.2
-      hono:
-        specifier: ^4.10.7
-        version: 4.12.21
       ts-pattern:
         specifier: 5.9.0
         version: 5.9.0
     devDependencies:
-      '@upload-stuff/server':
-        specifier: workspace:*
-        version: link:../server
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -222,9 +216,6 @@ importers:
 
   packages/server:
     dependencies:
-      '@hono/zod-validator':
-        specifier: ^0.7.5
-        version: 0.7.6(hono@4.12.21)(zod@4.1.11)
       '@paralleldrive/cuid2':
         specifier: ^2.2.2
         version: 2.3.1
@@ -234,9 +225,6 @@ importers:
       '@upload-stuff/core':
         specifier: workspace:*
         version: link:../core
-      hono:
-        specifier: ^4.10.7
-        version: 4.12.21
       zod:
         specifier: 4.1.11
         version: 4.1.11
@@ -681,12 +669,6 @@ packages:
         optional: true
       tailwindcss:
         optional: true
-
-  '@hono/zod-validator@0.7.6':
-    resolution: {integrity: sha512-Io1B6d011Gj1KknV4rXYz4le5+5EubcWEU/speUjuw9XMMIaP3n78yXLhjd2A3PXaXaUwEAluOiAyLqhBEJgsw==}
-    peerDependencies:
-      hono: '>=3.9.0'
-      zod: ^3.25.0 || ^4.0.0
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -2758,10 +2740,6 @@ packages:
   hastscript@9.0.1:
     resolution: {integrity: sha512-g7df9rMFX/SPi34tyGCyUBREQoKkapwdY/T04Qn9TDWfHhAYt4/I0gMVirzK5wEzeUqIjEB+LXC/ypb7Aqno5w==}
 
-  hono@4.12.21:
-    resolution: {integrity: sha512-uV63apnb0kyPtAUwoWgaGh9HyIFcv8lgmzPZSiTBQAFOFGIzka5EZ1dZocmGnn0XdX0+XTqJ6Tqv7selMuGLRQ==}
-    engines: {node: '>=16.9.0'}
-
   html-encoding-sniffer@4.0.0:
     resolution: {integrity: sha512-Y22oTqIU4uuPgEemfz7NDJz6OeKf12Lsu+QC+s3BVpda64lTiMYCyGwg5ki4vFxkMwQdeZDl2adZoqUgdFuTgQ==}
     engines: {node: '>=18'}
@@ -4450,11 +4428,6 @@ snapshots:
     optionalDependencies:
       '@tailwindcss/oxide': 4.3.1
       tailwindcss: 4.3.1
-
-  '@hono/zod-validator@0.7.6(hono@4.12.21)(zod@4.1.11)':
-    dependencies:
-      hono: 4.12.21
-      zod: 4.1.11
 
   '@img/colour@1.1.0':
     optional: true
@@ -6293,8 +6266,6 @@ snapshots:
       hast-util-parse-selector: 4.0.0
       property-information: 7.2.0
       space-separated-tokens: 2.0.2
-
-  hono@4.12.21: {}
 
   html-encoding-sniffer@4.0.0:
     dependencies:
