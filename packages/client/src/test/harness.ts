@@ -3,11 +3,13 @@ import { expect, vi } from "vite-plus/test";
 
 import { MockXHR } from "./mock-xhr";
 
+// The server serves the NORMALIZED config (per-bucket sizes, resolved caps), which is
+// exactly what the client validates and derives `accept` from.
 export const testRouteConfig = {
   isPublic: true,
-  type: "image",
   usageContext: "test",
-  maxFileSize: "4MB",
+  files: { "image/*": { maxFileSize: "4MB" } },
+  maxFileCount: 20,
 };
 
 export const testUploadPlan = {

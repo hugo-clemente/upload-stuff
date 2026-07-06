@@ -3,9 +3,11 @@ import { z } from "zod";
 import type { Json } from "./utils/types";
 
 export const initUploadFileSchema = z.object({
-  filename: z.string(),
-  contentType: z.string(),
-  size: z.number(),
+  // Bounded so a crafted request can't force unbounded allocation before the per-route
+  // count/size checks run; the size gate also relies on this being a real byte count.
+  filename: z.string().max(1024),
+  contentType: z.string().max(255),
+  size: z.number().int().nonnegative(),
 });
 export type InitUploadFileData = z.infer<typeof initUploadFileSchema>;
 
@@ -29,7 +31,10 @@ export type ToUploadFileData = z.infer<typeof toUploadFileSchema>;
 
 /** Request body for `POST /:endpoint/init-upload`. */
 export const initUploadRequestSchema = z.object({
-  files: z.array(initUploadFileSchema),
+  // Hard ceiling well above any realistic per-route `maxFileCount`; the route's own cap
+  // still enforces the real limit in validateFiles. This rejects an abusive array at the
+  // boundary before it's fully materialized and normalized.
+  files: z.array(initUploadFileSchema).max(1000),
   input: z.json(),
 });
 export type InitUploadRequest = {

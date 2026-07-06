@@ -6,7 +6,12 @@ import type { UploadStuffClient } from "@upload-stuff/client";
 
 import { createUploadStuffReactHelpers } from "./index";
 
-const routeConfig = { isPublic: true, type: "image", usageContext: "test", maxFileSize: "4MB" };
+const routeConfig = {
+  isPublic: true,
+  usageContext: "test",
+  files: { "image/*": { maxFileSize: "4MB" } },
+  maxFileCount: 20,
+};
 const completeResult = { files: [], serverData: null };
 
 type PendingUpload = {

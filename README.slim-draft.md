@@ -32,7 +32,7 @@ pnpm add @upload-stuff/client
 const f = createUploadStuffRouter<Context, typeof uploadStuff>();
 
 export const fileRouter = {
-  avatar: f({ type: "image", usageContext: "avatar", maxFileSize: "4MB" })
+  avatar: f({ files: ["image/*"], usageContext: "avatar", maxFileSize: "4MB" })
     .middleware(({ ctx }) => ({ userId: ctx.userId }))
     .onUploadComplete(({ files, middlewareData }) => {
       console.log("Uploaded by", middlewareData.userId, files);

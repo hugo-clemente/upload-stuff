@@ -4,29 +4,40 @@ import type { AnyUploadStuff } from "../upload-stuff";
 import { createCore } from "./core";
 import {
   UploadStuffError,
-  type CompleteUploadRequest,
+  normalizeRouteConfig,
+  validateFiles,
   type CompleteUploadResult,
-  type InitUploadRequest,
+  type InitUploadFileData,
   type InitUploadResult,
-  type RouteConfig,
+  type Json,
+  type NormalizedRouteConfig,
   type UploadStuffRouter,
   type ValidContextObject,
 } from "@upload-stuff/core";
 
+export type InitUploadHandlerData = {
+  files: InitUploadFileData[];
+  input: Json;
+};
+
+export type CompleteUploadHandlerData = {
+  batchToken: string;
+};
+
 export type RouteHandlers = {
   initUpload: (
     endpoint: string,
-    data: InitUploadRequest,
+    data: InitUploadHandlerData,
     ctx: ValidContextObject,
   ) => Promise<InitUploadResult>;
 
   completeUpload: (
     endpoint: string,
-    data: CompleteUploadRequest,
+    data: CompleteUploadHandlerData,
     ctx: ValidContextObject,
   ) => Promise<CompleteUploadResult>;
 
-  getConfig: (params: { endpoint: string }) => RouteConfig<string>;
+  getConfig: (params: { endpoint: string }) => NormalizedRouteConfig<string>;
 };
 
 export const fileRouteHandlers = ({
@@ -44,7 +55,20 @@ export const fileRouteHandlers = ({
     filePublicUrlGenerator: uploadStuff.__filePublicUrlGenerator,
     fields: uploadStuff.__fields,
     uploadWindowSeconds: uploadStuff.__uploadWindowSeconds,
+    defaultMaxFileCount: uploadStuff.__defaultMaxFileCount,
+    defaultMaxFileSize: uploadStuff.__defaultMaxFileSize,
   });
+
+  const normalizedConfigs = new Map<string, NormalizedRouteConfig<string>>();
+  for (const [endpoint, route] of Object.entries(fileRouter)) {
+    normalizedConfigs.set(
+      endpoint,
+      normalizeRouteConfig(route.routeConfig, {
+        defaultMaxFileCount: uploadStuff.__defaultMaxFileCount,
+        defaultMaxFileSize: uploadStuff.__defaultMaxFileSize,
+      }),
+    );
+  }
 
   const getRoute = (endpoint: string) => {
     const route = fileRouter[endpoint];
@@ -59,9 +83,21 @@ export const fileRouteHandlers = ({
     return route;
   };
 
+  const getNormalizedConfig = (endpoint: string) => {
+    const config = normalizedConfigs.get(endpoint);
+    if (!config) {
+      throw new UploadStuffError({
+        code: "BAD_REQUEST",
+        message: `Route ${endpoint} not found`,
+      });
+    }
+    return config;
+  };
+
   return {
     initUpload: async (endpoint, { files, input }, ctx) => {
       const route = getRoute(endpoint);
+      const normalizedConfig = getNormalizedConfig(endpoint);
 
       const inputParsed = await route.inputParser["~standard"].validate(input);
 
@@ -75,6 +111,11 @@ export const fileRouteHandlers = ({
       }
 
       const parsedInput = inputParsed.value;
+
+      // Validate (and hand middleware/fields) the raw client content types so matching stays
+      // honest - malformed/untyped values match `blob` only. Core folds to a storage-safe
+      // value at the persistence/signing boundary.
+      validateFiles(files, normalizedConfig);
 
       const middlewareData = await route.middleware({
         files,
@@ -91,8 +132,8 @@ export const fileRouteHandlers = ({
 
       const result = await core.initUpload({
         files,
-        config: route.routeConfig,
-        input: parsedInput as InitUploadRequest["input"],
+        config: normalizedConfig,
+        input: parsedInput as Json,
         fieldValues,
         middlewareData,
         endpoint,
@@ -126,7 +167,7 @@ export const fileRouteHandlers = ({
     },
 
     getConfig: ({ endpoint }) => {
-      return getRoute(endpoint).routeConfig;
+      return getNormalizedConfig(endpoint);
     },
   };
 };

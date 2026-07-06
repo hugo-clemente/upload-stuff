@@ -1,25 +1,19 @@
 /* oxlint-disable @typescript-eslint/no-explicit-any */
 import type {
   AnyFileRoute,
-  AnyRouteConfig,
   CompleteUploadResult,
   InitUploadResult,
+  NormalizedRouteConfig,
   UploadStuffRouter,
   inferRouteServerData,
 } from "@upload-stuff/core";
-import { DEFAULT_BASE_PATH, getValidMimeTypes, validateFiles } from "@upload-stuff/core";
+import { DEFAULT_BASE_PATH, canonicalizeContentType, validateFiles } from "@upload-stuff/core";
 
 import { type EndpointArg, resolveEndpoint } from "./endpoint";
 import { mergeHeaders } from "./headers";
 import { createProgressReporter } from "./progress";
 import type { CreateUploadStuffClientOptions, UploadFilesArgs, UploadFilesOptions } from "./types";
 import { uploadFileWithProgress } from "./upload";
-
-/**
- * Derive an `<input accept>` string from a route's accepted file type(s).
- */
-export const getAcceptFromType = (type: AnyRouteConfig["type"]) =>
-  getValidMimeTypes(type).join(",");
 
 export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
   options: CreateUploadStuffClientOptions,
@@ -55,8 +49,17 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
     return (await res.json()) as T;
   };
 
-  const fetchRouteConfig = (endpoint: string) =>
-    requestJson<AnyRouteConfig>(endpointUrl(endpoint, "route-config"));
+  const fetchRouteConfig = async (endpoint: string): Promise<NormalizedRouteConfig> => {
+    const config = await requestJson<NormalizedRouteConfig>(endpointUrl(endpoint, "route-config"));
+    // An older @upload-stuff/server serves the pre-`files` payload; without this guard the
+    // mismatch surfaces as an opaque TypeError deep inside matching. Fail loud.
+    if (typeof config.files !== "object" || config.files === null) {
+      throw new Error(
+        "upload-stuff: route-config response is missing `files` - upgrade @upload-stuff/server to match the client.",
+      );
+    }
+    return config;
+  };
 
   // Config is fetched once per endpoint and cached for the client's lifetime.
   // Two maps, kept distinct on purpose: `good` holds the last *resolved* config
@@ -65,9 +68,9 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
   // bypass the cache; it means "the resolved value is stale, refetch" while
   // still riding any in-flight fetch. A rejection never enters `good`, so it
   // can't poison the cache, and stale beats broken falls out for free.
-  const good = new Map<string, AnyRouteConfig>();
-  const inflight = new Map<string, Promise<AnyRouteConfig>>();
-  const loadRouteConfig = (resolved: string, force?: boolean): Promise<AnyRouteConfig> => {
+  const good = new Map<string, NormalizedRouteConfig>();
+  const inflight = new Map<string, Promise<NormalizedRouteConfig>>();
+  const loadRouteConfig = (resolved: string, force?: boolean): Promise<NormalizedRouteConfig> => {
     if (!force && good.has(resolved)) return Promise.resolve(good.get(resolved)!);
     const pending = inflight.get(resolved);
     if (pending) return pending;
@@ -108,7 +111,8 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
     loadRouteConfig(
       resolveEndpoint<TFileRouter, TEndpoint>(endpoint) as string,
       opts?.force,
-    ) as Promise<TFileRouter[TEndpoint]["routeConfig"]>;
+      // The server serves the NORMALIZED config, not the authored `routeConfig`.
+    ) as Promise<NormalizedRouteConfig<TFileRouter[TEndpoint]["$types"]["fileUsageContext"]>>;
 
   const uploadFiles = async <TEndpoint extends keyof TFileRouter>(
     endpoint: EndpointArg<TFileRouter, TEndpoint>,
@@ -166,9 +170,12 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
       const preparedFiles =
         (await opts.onBeforeUploadBegin?.({ files, config: routeConfig })) ?? files;
 
+      // Send the canonical (un-folded) content type so the client pre-flight and the server
+      // match on the honest value; the server folds to a storage-safe value and returns it as
+      // `plan.contentType` for the PUT.
       const meta = preparedFiles.map((f) => ({
         filename: f.name,
-        contentType: f.type || "application/octet-stream",
+        contentType: canonicalizeContentType(f.type),
         size: f.size,
       }));
 
@@ -225,6 +232,9 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
         await uploadFileWithProgress({
           uploadUrl: plan.uploadUrl,
           uploadHeaders: plan.uploadHeaders,
+          // Replay the server's signed/stored content type, not the raw file.type, so the
+          // PUT Content-Type matches the presigned signature and S3 verifyUpload.
+          contentType: plan.contentType,
           file: f,
           onProgress: (loaded) => {
             const delta = loaded - lastLoaded;

@@ -23,13 +23,17 @@ const fakeDatabaseAdapter = (): DatabaseAdapter<string, any> => ({
   deleteFiles: async () => {},
 });
 
+const baseConfig = {
+  storageAdapter: () => fakeStorageAdapter(),
+  databaseAdapter: () => fakeDatabaseAdapter(),
+  filePublicUrlGenerator: ({ key }: { key: string }) => key,
+};
+
 describe("UploadStuff reserved field names (#1)", () => {
   it("throws when a custom field reuses a reserved column name", () => {
     expect(() =>
       UploadStuff()({
-        storageAdapter: () => fakeStorageAdapter(),
-        databaseAdapter: () => fakeDatabaseAdapter(),
-        filePublicUrlGenerator: ({ key }) => key,
+        ...baseConfig,
         // `as any` bypasses the type-level guard to exercise the runtime guard,
         // standing in for a plain-JS caller.
         fields: { stored: { type: "string" } } as any,
@@ -40,9 +44,7 @@ describe("UploadStuff reserved field names (#1)", () => {
   it("accepts non-reserved custom field names", () => {
     expect(() =>
       UploadStuff()({
-        storageAdapter: () => fakeStorageAdapter(),
-        databaseAdapter: () => fakeDatabaseAdapter(),
-        filePublicUrlGenerator: ({ key }) => key,
+        ...baseConfig,
         fields: { entityId: { type: "string" } },
       }),
     ).not.toThrow();
@@ -50,20 +52,47 @@ describe("UploadStuff reserved field names (#1)", () => {
 });
 
 describe("uploadWindowSeconds validation", () => {
-  const base = {
-    storageAdapter: () => fakeStorageAdapter(),
-    databaseAdapter: () => fakeDatabaseAdapter(),
-    filePublicUrlGenerator: ({ key }: { key: string }) => key,
-  };
   it("accepts the boundaries 1 and 604800 and the default", () => {
-    expect(() => UploadStuff()({ ...base })).not.toThrow();
-    expect(() => UploadStuff()({ ...base, uploadWindowSeconds: 1 })).not.toThrow();
-    expect(() => UploadStuff()({ ...base, uploadWindowSeconds: 604800 })).not.toThrow();
+    expect(() => UploadStuff()({ ...baseConfig })).not.toThrow();
+    expect(() => UploadStuff()({ ...baseConfig, uploadWindowSeconds: 1 })).not.toThrow();
+    expect(() => UploadStuff()({ ...baseConfig, uploadWindowSeconds: 604800 })).not.toThrow();
   });
   it("rejects 0, negative, non-integer, NaN, and >604800", () => {
     for (const bad of [0, -1, 1.5, Number.NaN, 604801]) {
-      expect(() => UploadStuff()({ ...base, uploadWindowSeconds: bad })).toThrow(/uploadWindowSeconds/);
+      expect(() => UploadStuff()({ ...baseConfig, uploadWindowSeconds: bad })).toThrow(
+        /uploadWindowSeconds/,
+      );
     }
+  });
+});
+
+describe("defaultMaxFileCount / defaultMaxFileSize validation", () => {
+  it("defaults to 20 and 4MB", () => {
+    const instance = UploadStuff()(baseConfig);
+    expect(instance.__defaultMaxFileCount).toBe(20);
+    expect(instance.__defaultMaxFileSize).toBe("4MB");
+  });
+
+  it("accepts explicit values", () => {
+    const instance = UploadStuff()({
+      ...baseConfig,
+      defaultMaxFileCount: 5,
+      defaultMaxFileSize: "1MB",
+    });
+    expect(instance.__defaultMaxFileCount).toBe(5);
+    expect(instance.__defaultMaxFileSize).toBe("1MB");
+  });
+
+  it("rejects invalid values", () => {
+    expect(() => UploadStuff()({ ...baseConfig, defaultMaxFileCount: -1 })).toThrow(
+      /defaultMaxFileCount/,
+    );
+    expect(() => UploadStuff()({ ...baseConfig, defaultMaxFileCount: 1.5 })).toThrow(
+      /defaultMaxFileCount/,
+    );
+    expect(() => UploadStuff()({ ...baseConfig, defaultMaxFileSize: "0B" })).toThrow(
+      /defaultMaxFileSize/,
+    );
   });
 });
 
@@ -78,9 +107,9 @@ describe("serverUtils.cleanUpFiles threshold", () => {
       },
     };
     const uploadStuff = UploadStuff()({
+      ...baseConfig,
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => databaseAdapter,
-      filePublicUrlGenerator: ({ key }) => key,
       uploadWindowSeconds: 100,
     });
     const expected = Date.now() - 100 * 1000;
@@ -102,9 +131,9 @@ describe("serverUtils.uploadFile forwards row data to the storage adapter (#6)",
     };
 
     const uploadStuff = UploadStuff()({
+      ...baseConfig,
       storageAdapter: () => storageAdapter,
-      databaseAdapter: () => fakeDatabaseAdapter(),
-      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+      filePublicUrlGenerator: ({ key }: { key: string }) => `https://cdn.test/${key}`,
       fields: {
         entityId: { type: "string", required: false },
         count: { type: "number", required: true },

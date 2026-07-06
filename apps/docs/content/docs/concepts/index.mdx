@@ -75,7 +75,7 @@ const uploadStuff = UploadStuff<FileUsageContext>({
 const f = createUploadStuffRouter<{ userId: string }, typeof uploadStuff>();
 
 // "avatr" isn't in your usageContext union:
-f({ isPublic: true, type: "image", usageContext: "avatr", maxFileSize: "4MB" });
+f({ isPublic: true, files: ["image/*"], usageContext: "avatr", maxFileSize: "4MB" });
 ```
 
 ## Cleanup

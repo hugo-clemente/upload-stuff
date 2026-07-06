@@ -2,12 +2,13 @@ import { z } from "zod";
 
 import {
   UploadStuffError,
+  normalizeContentType,
   validateFiles,
   type CompleteUploadResult,
   type InitUploadFileData,
   type InitUploadResult,
   type Json,
-  type RouteConfig,
+  type NormalizedRouteConfig,
   type UploadStuffConfig,
   type ValidMiddlewareObject,
 } from "@upload-stuff/core";
@@ -17,7 +18,7 @@ import { pickDeclaredFields } from "../fields";
 interface InitUploadHandler<TFileUsageContext extends string> {
   (params: {
     files: Array<InitUploadFileData>;
-    config: RouteConfig<TFileUsageContext>;
+    config: NormalizedRouteConfig<TFileUsageContext>;
     input: Json;
     fieldValues: Record<string, unknown>;
     middlewareData: ValidMiddlewareObject;
@@ -100,6 +101,8 @@ export const createCore = <TFileUsageContext extends string>(
       );
     }
 
+    // handler.ts already validated before middleware, but core is a public seam
+    // reachable without it - keep the same gate for direct callers.
     validateFiles(files, config);
 
     const batchToken = createBatchToken();
@@ -113,6 +116,11 @@ export const createCore = <TFileUsageContext extends string>(
 
     const preparedFiles = await Promise.all(
       files.map(async (file) => {
+        // Fold to a storage-safe content type at the persistence/signing boundary so the DB
+        // row, the signed S3 ContentType, and the value handed back for the PUT are always
+        // well-formed - whether the caller came through the HTTP handler or the exported core
+        // seam directly. validateFiles above matched on the raw value.
+        const contentType = normalizeContentType(file.contentType);
         const id = await fileIdGenerator({
           filename: file.filename,
           usageContext: config.usageContext,
@@ -129,7 +137,7 @@ export const createCore = <TFileUsageContext extends string>(
           storageAdapter.generatePresignedUpload({
             key,
             filename: file.filename,
-            contentType: file.contentType,
+            contentType,
             size: file.size,
             usageContext: config.usageContext,
             isPublic: config.isPublic,
@@ -142,6 +150,7 @@ export const createCore = <TFileUsageContext extends string>(
 
         return {
           file,
+          contentType,
           id,
           key,
           publicUrl,
@@ -152,13 +161,13 @@ export const createCore = <TFileUsageContext extends string>(
     );
 
     await databaseAdapter.createFiles({
-      files: preparedFiles.map(({ file, id, key, publicUrl }) => ({
+      files: preparedFiles.map(({ file, contentType, id, key, publicUrl }) => ({
         id,
         key,
         publicUrl,
         filename: file.filename,
         size: file.size,
-        contentType: file.contentType,
+        contentType,
         batchId,
         // oxlint-disable-next-line @typescript-eslint/no-explicit-any
         uploadSessionData: uploadSessionDataParse.data as any,
@@ -174,11 +183,11 @@ export const createCore = <TFileUsageContext extends string>(
     });
 
     return {
-      files: preparedFiles.map(({ file, id, key, publicUrl, uploadUrl, uploadHeaders }) => ({
+      files: preparedFiles.map(({ file, contentType, id, key, publicUrl, uploadUrl, uploadHeaders }) => ({
         id,
         key,
         publicUrl,
-        contentType: file.contentType,
+        contentType,
         filename: file.filename,
         size: file.size,
         uploadUrl,

@@ -1,5 +1,7 @@
 // Framework-free engine surface.
-export { createUploadStuffClient, getAcceptFromType, type UploadStuffClient } from "./client";
+export { createUploadStuffClient, type UploadStuffClient } from "./client";
+// Accept-string helper now lives in core (derives from the normalized `files` config).
+export { getAcceptFromRouteConfig } from "@upload-stuff/core";
 export { preprocessImages } from "./compress-images";
 export type {
   CreateUploadStuffClientOptions,
@@ -19,6 +21,7 @@ export type {
   AnyRouteConfig,
   CompleteUploadResult,
   InitUploadResult,
+  NormalizedRouteConfig,
   RouteConfig,
   ToUploadFileData,
   UploadStuffRouter,

@@ -19,6 +19,7 @@ describe("uploadFileWithProgress", () => {
     const p = uploadFileWithProgress({
       uploadUrl: "https://storage.example.com/put/1",
       uploadHeaders: { "x-amz-meta-user": "u1" },
+      contentType: "image/png",
       file: file(),
     });
     const xhr = MockXHR.instances[0]!;
@@ -31,9 +32,12 @@ describe("uploadFileWithProgress", () => {
     expect(xhr.sentBody).toBeInstanceOf(File);
   });
 
-  it("defaults Content-Type to application/octet-stream when the file has no type", async () => {
+  it("sends the provided Content-Type header verbatim (no file.type fallback)", async () => {
+    // The server folds to a storage-safe value and returns it as plan.contentType; the PUT
+    // must replay exactly that so the presigned signature matches.
     const p = uploadFileWithProgress({
       uploadUrl: "https://storage.example.com/put/1",
+      contentType: "application/octet-stream",
       file: file(100, "raw.bin", ""),
     });
     MockXHR.instances[0]!.respond(200);
@@ -42,20 +46,20 @@ describe("uploadFileWithProgress", () => {
   });
 
   it("rejects with the status on non-2xx", async () => {
-    const p = uploadFileWithProgress({ uploadUrl: "https://s/1", file: file() });
+    const p = uploadFileWithProgress({ uploadUrl: "https://s/1", contentType: "image/png", file: file() });
     MockXHR.instances[0]!.respond(500);
     await expect(p).rejects.toThrow("Upload failed (500)");
   });
 
   it("rejects on network error", async () => {
-    const p = uploadFileWithProgress({ uploadUrl: "https://s/1", file: file() });
+    const p = uploadFileWithProgress({ uploadUrl: "https://s/1", contentType: "image/png", file: file() });
     MockXHR.instances[0]!.failNetwork();
     await expect(p).rejects.toThrow("Upload failed");
   });
 
   it("forwards absolute loaded bytes to onProgress", async () => {
     const onProgress = vi.fn();
-    const p = uploadFileWithProgress({ uploadUrl: "https://s/1", file: file(), onProgress });
+    const p = uploadFileWithProgress({ uploadUrl: "https://s/1", contentType: "image/png", file: file(), onProgress });
     const xhr = MockXHR.instances[0]!;
     xhr.emitProgress(10);
     xhr.emitProgress(30);
@@ -68,6 +72,7 @@ describe("uploadFileWithProgress", () => {
     const seen: unknown[] = [];
     const p = uploadFileWithProgress({
       uploadUrl: "https://s/1",
+      contentType: "image/png",
       file: file(),
       onInitXhr: (xhr) => seen.push(xhr),
     });
@@ -79,7 +84,7 @@ describe("uploadFileWithProgress", () => {
   it("rejects immediately and never sends when the signal is already aborted", async () => {
     const controller = new AbortController();
     controller.abort();
-    const p = uploadFileWithProgress({ uploadUrl: "https://s/1", file: file(), signal: controller.signal });
+    const p = uploadFileWithProgress({ uploadUrl: "https://s/1", contentType: "image/png", file: file(), signal: controller.signal });
     await expect(p).rejects.toThrow("Upload aborted");
     expect(MockXHR.instances[0]!.aborted).toBe(true);
     expect(MockXHR.instances[0]!.sentBody).toBeUndefined();
@@ -87,7 +92,7 @@ describe("uploadFileWithProgress", () => {
 
   it("aborts the xhr and rejects when the signal fires mid-flight", async () => {
     const controller = new AbortController();
-    const p = uploadFileWithProgress({ uploadUrl: "https://s/1", file: file(), signal: controller.signal });
+    const p = uploadFileWithProgress({ uploadUrl: "https://s/1", contentType: "image/png", file: file(), signal: controller.signal });
     controller.abort();
     await expect(p).rejects.toThrow("Upload aborted");
     expect(MockXHR.instances[0]!.aborted).toBe(true);

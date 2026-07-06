@@ -33,6 +33,7 @@
     "build": "vp pack",
     "dev": "vp pack --watch",
     "check-types": "tsc --noEmit",
+    "generate:mime": "node scripts/generate-mime-literals.mjs",
     "lint": "vp lint ."
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "zod": "4.1.11"
   },
   "devDependencies": {
+    "mime-db": "^1.54.0",
     "typescript": "5.9.3"
   }
 }

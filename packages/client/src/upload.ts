@@ -2,6 +2,7 @@ export const uploadFileWithProgress = async ({
   uploadUrl,
   uploadHeaders,
   file,
+  contentType,
   onProgress,
   onInitXhr,
   signal,
@@ -9,6 +10,7 @@ export const uploadFileWithProgress = async ({
   uploadUrl: string;
   uploadHeaders?: Record<string, string>;
   file: File;
+  contentType: string;
   onProgress?: (uploadedBytes: number) => void;
   onInitXhr?: (xhr: XMLHttpRequest) => void;
   signal?: AbortSignal;
@@ -16,7 +18,9 @@ export const uploadFileWithProgress = async ({
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", uploadUrl);
-    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    // The server signed and stored this exact value; sending anything else (e.g. the raw
+    // file.type) would fail the presigned signature check and S3 verifyUpload.
+    xhr.setRequestHeader("Content-Type", contentType);
     // Replay any signed headers (e.g. `x-amz-meta-*`) the storage adapter
     // required, otherwise the presigned signature check rejects the PUT.
     if (uploadHeaders) {

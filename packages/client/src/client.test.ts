@@ -188,6 +188,19 @@ describe("uploadFiles — failures", () => {
     expect(MockXHR.instances).toHaveLength(0);
   });
 
+  it("throws a clear version-skew error when the route-config lacks `files`", async () => {
+    // An older server serving the pre-`files` payload must fail loud, not crash deep in
+    // matching with an opaque TypeError.
+    mockFetch({
+      routeConfig: () =>
+        jsonResponse({ isPublic: true, type: "image", usageContext: "test", maxFileSize: "4MB" }),
+    });
+    const client = makeClient();
+    await expect(client.uploadFiles("image", [png()])).rejects.toThrow(
+      /route-config response is missing `files`/,
+    );
+  });
+
   it("rejects when init fails; no PUT happens", async () => {
     mockFetch({ init: () => jsonResponse({ error: "nope" }, 400) });
     const onUploadError = vi.fn();
