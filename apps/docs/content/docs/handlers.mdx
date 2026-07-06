@@ -53,10 +53,12 @@ import express from "express";
 import { toNodeHandler } from "@upload-stuff/server/node";
 
 const app = express();
-app.use(toNodeHandler({ uploadStuff, fileRouter, createContext }));
+// Mount at the base path — the handler always responds, so mounting it at the
+// app root would turn every other route into a 404.
+app.use("/api/upload-stuff", toNodeHandler({ uploadStuff, fileRouter, createContext }));
 ```
 
-Mount order doesn't matter: if `express.json()` already consumed the request stream, the handler reuses the parsed `req.body`. Mounting under a prefix (`app.use("/api/upload-stuff", …)`) also works — the handler reads `req.originalUrl`.
+Mount it at the same path as `basePath` (default `/api/upload-stuff`). Mount order doesn't matter: if `express.json()` already consumed the request stream, the handler reuses the parsed `req.body`, and the prefix is recovered from `req.originalUrl`.
 
 ## NestJS (Express platform)
 
@@ -69,7 +71,8 @@ import { toNodeHandler } from "@upload-stuff/server/node";
 import { AppModule } from "./app.module";
 
 const app = await NestFactory.create(AppModule);
-app.use(toNodeHandler({ uploadStuff, fileRouter, createContext }));
+// Scope the middleware to the base path so it never shadows your controllers.
+app.use("/api/upload-stuff", toNodeHandler({ uploadStuff, fileRouter, createContext }));
 await app.listen(3000);
 ```
 

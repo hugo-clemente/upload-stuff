@@ -123,4 +123,67 @@ describe("toNodeHandler over a real http server", () => {
     expect(res.headers.get("content-type")).toContain("json");
     expect(await res.json()).toEqual({ error: "Invalid endpoint" });
   });
+
+  it("does not route a //authority request target to an endpoint", async () => {
+    // `//evil.test/api/upload-stuff/...` must not be parsed as a protocol-relative
+    // URL (host evil.test, path /api/upload-stuff/...) and reach a real route.
+    const url = await listen();
+    const res = await fetch(`${url}//evil.test/api/upload-stuff/avatars/route-config`);
+    expect(res.status).toBe(404);
+  });
+
+  const throwingHandler = () =>
+    toNodeHandler({
+      fileRouter: { avatars: makeRoute(() => ({})) },
+      uploadStuff: UploadStuff()({
+        storageAdapter: () => fakeStorageAdapter(),
+        databaseAdapter: () => fakeDatabaseAdapter(),
+        filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+      }),
+      // A non-UploadStuffError from createContext propagates out of the fetch
+      // handler; a fetch runtime would 500 it, bare Node would otherwise let the
+      // rejection crash the process.
+      createContext: async () => {
+        throw new Error("boom");
+      },
+    });
+
+  // Start a server driving `handler` with an explicit request handler, so tests
+  // can inject a throwing handler and/or a next callback that `listen` can't.
+  const listenWith = (
+    driver: (req: IncomingMessage, res: ServerResponse) => void,
+  ): Promise<string> =>
+    new Promise((resolve) => {
+      const server = createServer(driver);
+      closers.push(() => new Promise((r) => server.close(r)));
+      server.listen(0, "127.0.0.1", () => {
+        resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+      });
+    });
+
+  it("answers an unhandled throw with a 500 when there is no next (raw http)", async () => {
+    const handler = throwingHandler();
+    const url = await listenWith((req, res) => void handler(req, res));
+    const res = await fetch(`${url}/api/upload-stuff/avatars/route-config`);
+    expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toContain("json");
+    expect(await res.json()).toEqual({ error: "Internal Server Error" });
+  });
+
+  it("forwards an unhandled throw to next when present (Express/Nest)", async () => {
+    let forwarded: unknown;
+    const handler = throwingHandler();
+    const url = await listenWith((req, res) => {
+      // Mimic Express/Nest invoking middleware with an error callback.
+      void handler(req, res, (err) => {
+        forwarded = err;
+        res.statusCode = 502;
+        res.end("handled by app");
+      });
+    });
+    const res = await fetch(`${url}/api/upload-stuff/avatars/route-config`);
+    expect(res.status).toBe(502);
+    expect(forwarded).toBeInstanceOf(Error);
+    expect((forwarded as Error).message).toBe("boom");
+  });
 });
