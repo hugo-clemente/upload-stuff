@@ -4,34 +4,25 @@ import type { AnyUploadStuff } from "../upload-stuff";
 import { createCore } from "./core";
 import {
   UploadStuffError,
+  type CompleteUploadRequest,
   type CompleteUploadResult,
-  type InitUploadFileData,
+  type InitUploadRequest,
   type InitUploadResult,
-  type Json,
   type RouteConfig,
   type UploadStuffRouter,
   type ValidContextObject,
 } from "@upload-stuff/core";
 
-export type InitUploadHandlerData = {
-  files: InitUploadFileData[];
-  input: Json;
-};
-
-export type CompleteUploadHandlerData = {
-  batchToken: string;
-};
-
 export type RouteHandlers = {
   initUpload: (
     endpoint: string,
-    data: InitUploadHandlerData,
+    data: InitUploadRequest,
     ctx: ValidContextObject,
   ) => Promise<InitUploadResult>;
 
   completeUpload: (
     endpoint: string,
-    data: CompleteUploadHandlerData,
+    data: CompleteUploadRequest,
     ctx: ValidContextObject,
   ) => Promise<CompleteUploadResult>;
 
@@ -101,7 +92,7 @@ export const fileRouteHandlers = ({
       const result = await core.initUpload({
         files,
         config: route.routeConfig,
-        input: parsedInput as Json,
+        input: parsedInput as InitUploadRequest["input"],
         fieldValues,
         middlewareData,
         endpoint,
