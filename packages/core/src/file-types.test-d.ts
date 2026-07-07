@@ -23,17 +23,16 @@ describe("FileTypeKey", () => {
 
     const ok = {
       isPublic: false,
-      usageContext: "doc",
       files: { [custom]: {} },
-    } satisfies RouteConfig<"doc">;
-    expectTypeOf(ok).toMatchTypeOf<RouteConfig<"doc">>();
+    } satisfies RouteConfig;
+    expectTypeOf(ok).toMatchTypeOf<RouteConfig>();
 
     // @ts-expect-error image/pgn is not a generated MIME literal.
-    const bad = { isPublic: false, usageContext: "doc", files: { "image/pgn": {} } } satisfies RouteConfig<"doc">;
+    const bad = { isPublic: false, files: { "image/pgn": {} } } satisfies RouteConfig;
     void bad;
 
     // @ts-expect-error legacy `type` field was removed from RouteConfig
-    const legacy = { isPublic: false, usageContext: "doc", files: { "blob": {} }, type: "blob" } satisfies RouteConfig<"doc">;
+    const legacy = { isPublic: false, files: { "blob": {} }, type: "blob" } satisfies RouteConfig;
     void legacy;
   });
 });

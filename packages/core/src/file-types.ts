@@ -25,9 +25,8 @@ export type NormalizedFilesConfig = Partial<
 > &
   Partial<Record<CustomMimeLiteral, NormalizedPerTypeConfig>>;
 
-export type NormalizedRouteConfig<TFileUsageContext extends string = string> = {
+export type NormalizedRouteConfig = {
   isPublic: boolean;
-  usageContext: TFileUsageContext;
   files: NormalizedFilesConfig;
   maxFileCount: number;
 };
@@ -109,10 +108,10 @@ const assertValidSize = (value: FileSize, label: string): void => {
   }
 };
 
-export const normalizeRouteConfig = <T extends string>(
-  config: RouteConfig<T>,
+export const normalizeRouteConfig = (
+  config: RouteConfig,
   opts: { defaultMaxFileCount: number; defaultMaxFileSize: FileSize },
-): NormalizedRouteConfig<T> => {
+): NormalizedRouteConfig => {
   assertValidCount(opts.defaultMaxFileCount, "defaultMaxFileCount");
   assertValidSize(opts.defaultMaxFileSize, "defaultMaxFileSize");
   assertValidCount(config.maxFileCount, "maxFileCount");
@@ -151,7 +150,6 @@ export const normalizeRouteConfig = <T extends string>(
 
   return {
     isPublic: config.isPublic,
-    usageContext: config.usageContext,
     files: files as NormalizedFilesConfig,
     maxFileCount: config.maxFileCount ?? opts.defaultMaxFileCount,
   };

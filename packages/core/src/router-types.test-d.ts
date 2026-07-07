@@ -28,33 +28,26 @@ describe("inferRouteInput", () => {
   });
 
   it("resolves to the declared input type when input is set", () => {
-    type Route = FileRoute<
-      {
-        fileUsageContext: "avatar";
-        input: { albumId: string };
-        output: unknown;
-        middlewareData: unknown;
-        context: { userId?: string };
-      },
-      "avatar"
-    >;
+    type Route = FileRoute<{
+      input: { albumId: string };
+      output: unknown;
+      middlewareData: unknown;
+      context: { userId?: string };
+    }>;
     expectTypeOf<inferRouteInput<Route>>().toEqualTypeOf<{ albumId: string }>();
   });
 });
 
 describe("UploadBuilder", () => {
-  type Builder = UploadBuilder<
-    {
-      _routeConfig: unknown;
-      _input: { in: UnsetMarker; out: UnsetMarker };
-      _fields: UnsetMarker;
-      _fieldsDeclaration: Record<never, never>;
-      _middlewareData: { role: string };
-      _ctx: { userId?: string };
-      _completeFnData: UnsetMarker;
-    },
-    "avatar"
-  >;
+  type Builder = UploadBuilder<{
+    _routeConfig: unknown;
+    _input: { in: UnsetMarker; out: UnsetMarker };
+    _fields: UnsetMarker;
+    _fieldsDeclaration: Record<never, never>;
+    _middlewareData: { role: string };
+    _ctx: { userId?: string };
+    _completeFnData: UnsetMarker;
+  }>;
 
   it("types middlewareData from the middleware output", () => {
     type CompleteFn = Parameters<Builder["onUploadComplete"]>[0];
@@ -83,23 +76,17 @@ describe("build requires .fields() when a required field is declared (#3)", () =
   };
 
   it("build() resolves to an error string when a required field is declared but .fields() is unset", () => {
-    type Built = ReturnType<
-      UploadBuilder<ParamsWith<UnsetMarker, RequiredFieldsDeclaration>, "avatar">["build"]
-    >;
+    type Built = ReturnType<UploadBuilder<ParamsWith<UnsetMarker, RequiredFieldsDeclaration>>["build"]>;
     expectTypeOf<Built>().toEqualTypeOf<"`.fields()` is required: this instance declares a required custom field">();
   });
 
   it("build() resolves to a FileRoute once .fields() has been set", () => {
-    type Built = ReturnType<
-      UploadBuilder<ParamsWith<{ count: number }, RequiredFieldsDeclaration>, "avatar">["build"]
-    >;
+    type Built = ReturnType<UploadBuilder<ParamsWith<{ count: number }, RequiredFieldsDeclaration>>["build"]>;
     expectTypeOf<Built>().toMatchTypeOf<AnyFileRoute>();
   });
 
   it("build() resolves to a FileRoute when no required field is declared, even without .fields()", () => {
-    type Built = ReturnType<
-      UploadBuilder<ParamsWith<UnsetMarker, Record<never, never>>, "avatar">["build"]
-    >;
+    type Built = ReturnType<UploadBuilder<ParamsWith<UnsetMarker, Record<never, never>>>["build"]>;
     expectTypeOf<Built>().toMatchTypeOf<AnyFileRoute>();
   });
 });

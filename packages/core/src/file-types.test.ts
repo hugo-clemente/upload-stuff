@@ -13,7 +13,7 @@ import {
   type PerTypeConfig,
 } from "./file-types";
 
-const base = { isPublic: false, usageContext: "doc" } as const;
+const base = { isPublic: false } as const;
 const opts = { defaultMaxFileCount: 20, defaultMaxFileSize: DEFAULT_MAX_FILE_SIZE };
 
 describe("normalizeContentType", () => {

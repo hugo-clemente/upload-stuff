@@ -33,7 +33,7 @@ type IsAny<T> = 0 extends 1 & T ? true : false;
  * becomes a required key, every other field becomes optional.
  *
  * `any` is mapped to `Record<string, any>` rather than the literal mapped types:
- * the erased `UploadStuff<any, any>` (`AnyUploadStuff`) flows `any` in here, and
+ * the erased `UploadStuff<any>` (`AnyUploadStuff`) flows `any` in here, and
  * the naive mapping would otherwise collapse to a `string | number | boolean`
  * index signature that conflicts with the base row's `uploadSessionData: Json`
  * and breaks assignability of every concrete instance to `AnyUploadStuff`.
@@ -66,7 +66,6 @@ export const RESERVED_FIELD_NAMES = [
   "publicUrl",
   "contentType",
   "uploadSessionData",
-  "usageContext",
   "isPublic",
   "stored",
   "storedAt",
@@ -88,10 +87,7 @@ export type ValidateFieldsDeclaration<TFields extends FieldsDeclaration> = {
     : TFields[K];
 };
 
-export type DatabaseFile<
-  TFileUsageContext extends string,
-  TFields extends FieldsDeclaration = Record<never, never>,
-> = {
+export type DatabaseFile<TFields extends FieldsDeclaration = Record<never, never>> = {
   id: string;
   key: string;
   filename: string;
@@ -99,7 +95,6 @@ export type DatabaseFile<
   publicUrl: string;
   contentType: string;
   uploadSessionData?: Json;
-  usageContext: TFileUsageContext;
   isPublic: boolean;
   stored: boolean;
   storedAt?: Date;
@@ -113,15 +108,10 @@ export type DatabaseFile<
   createdAt?: Date;
 } & InferFieldValues<TFields>;
 
-export type DatabaseAdapter<
-  TFileUsageContext extends string = string,
-  TFields extends FieldsDeclaration = Record<never, never>,
-> = {
-  createFiles: (params: { files: DatabaseFile<TFileUsageContext, TFields>[] }) => Promise<void>;
+export type DatabaseAdapter<TFields extends FieldsDeclaration = Record<never, never>> = {
+  createFiles: (params: { files: DatabaseFile<TFields>[] }) => Promise<void>;
 
-  findFilesByBatchId: (params: {
-    batchId: string;
-  }) => Promise<DatabaseFile<TFileUsageContext, TFields>[]>;
+  findFilesByBatchId: (params: { batchId: string }) => Promise<DatabaseFile<TFields>[]>;
 
   findFilesToCleanUp: (params: {
     createdAtThreshold: Date;
@@ -133,8 +123,8 @@ export type DatabaseAdapter<
   }) => Promise<{ updatedCount: number }>;
 
   updateFile: (params: {
-    file: Partial<DatabaseFile<TFileUsageContext, TFields>> & { id: string };
-  }) => Promise<DatabaseFile<TFileUsageContext, TFields>>;
+    file: Partial<DatabaseFile<TFields>> & { id: string };
+  }) => Promise<DatabaseFile<TFields>>;
 
   deleteFiles: (params: {
     fileIds: string[];
@@ -145,23 +135,18 @@ export type DatabaseAdapter<
 export type FileUploadContent = string | Uint8Array;
 
 /** The row data passed to an `objectMetadata` resolver: the base file columns and the typed declared custom fields. */
-export type ObjectMetadataInput<
-  TFileUsageContext extends string,
-  TFields extends FieldsDeclaration,
-> = {
+export type ObjectMetadataInput<TFields extends FieldsDeclaration> = {
   key: string;
   filename: string;
   size: number;
   contentType: string;
-  usageContext: TFileUsageContext;
   isPublic: boolean;
 } & InferFieldValues<TFields>;
 
 /** Maps a stored file's row onto an object-metadata key/value map. */
-export type ObjectMetadataResolver<
-  TFileUsageContext extends string,
-  TFields extends FieldsDeclaration,
-> = (file: ObjectMetadataInput<TFileUsageContext, TFields>) => Record<string, string>;
+export type ObjectMetadataResolver<TFields extends FieldsDeclaration> = (
+  file: ObjectMetadataInput<TFields>,
+) => Record<string, string>;
 
 /**
  * What a storage adapter needs to store an object: the raw row data including
@@ -173,7 +158,6 @@ export type StorageObjectInfo = {
   filename: string;
   contentType: string;
   size: number;
-  usageContext: string;
   isPublic: boolean;
   /** Resolved custom-field values, already filtered to the declared keys. */
   fields: Record<string, unknown>;
@@ -218,44 +202,34 @@ export type StorageAdapter = {
 };
 
 /**
- * Phantom marker carrying an instance's resolved `TFileUsageContext` and
- * `TFields` to an adapter factory. Adapters are supplied to `UploadStuff(...)` as
+ * Phantom marker carrying an instance's resolved `TFields` to an adapter
+ * factory. Adapters are supplied to `UploadStuff(...)` as
  * factories `(info) => adapter`; the library calls the factory once with this
  * marker, so the factory's type parameters are inferred from the `UploadStuff`
  * config instead of being passed explicitly. It holds no runtime data.
  */
-export type AdapterTypeInfo<
-  TFileUsageContext extends string = string,
-  TFields extends FieldsDeclaration = Record<never, never>,
-> = {
-  readonly __fileUsageContext?: TFileUsageContext;
+export type AdapterTypeInfo<TFields extends FieldsDeclaration = Record<never, never>> = {
   readonly __fields?: TFields;
 };
 
 /** A storage adapter as supplied to `UploadStuff(...)`. `TFields` rides on the
  * marker so an adapter's typed `objectMetadata` option is inferred. */
 export type StorageAdapterFactory<
-  TFileUsageContext extends string = string,
   TFields extends FieldsDeclaration = Record<never, never>,
-> = (info: AdapterTypeInfo<TFileUsageContext, TFields>) => StorageAdapter;
+> = (info: AdapterTypeInfo<TFields>) => StorageAdapter;
 
 /** A database adapter as supplied to `UploadStuff(...)`; its types are inferred
  * from the marker the library passes. */
 export type DatabaseAdapterFactory<
-  TFileUsageContext extends string = string,
   TFields extends FieldsDeclaration = Record<never, never>,
-> = (info: AdapterTypeInfo<TFileUsageContext, TFields>) => DatabaseAdapter<TFileUsageContext, TFields>;
+> = (info: AdapterTypeInfo<TFields>) => DatabaseAdapter<TFields>;
 
 export type FileKeyGenerator = (params: {
   fileId: string;
   filename: string;
-  usageContext: string;
 }) => string | Promise<string>;
 
-export type FileIdGenerator = (params: {
-  filename: string;
-  usageContext: string;
-}) => string | Promise<string>;
+export type FileIdGenerator = (params: { filename: string }) => string | Promise<string>;
 
 export type FilePublicUrlGenerator = (params: { key: string }) => string | Promise<string>;
 
@@ -264,12 +238,9 @@ export type FilePublicUrlGenerator = (params: { key: string }) => string | Promi
  * factories have been called. Consumers never construct this directly — they pass
  * a `CreateUploadStuffConfig` (with adapter *factories*) to `UploadStuff(...)`.
  */
-export type UploadStuffConfig<
-  TFileUsageContext extends string,
-  TFields extends FieldsDeclaration = Record<never, never>,
-> = {
+export type UploadStuffConfig<TFields extends FieldsDeclaration = Record<never, never>> = {
   storageAdapter: StorageAdapter;
-  databaseAdapter: DatabaseAdapter<TFileUsageContext, TFields>;
+  databaseAdapter: DatabaseAdapter<TFields>;
   fileIdGenerator: FileIdGenerator;
   fileKeyGenerator: FileKeyGenerator;
   filePublicUrlGenerator: FilePublicUrlGenerator;
@@ -283,16 +254,13 @@ export type UploadStuffConfig<
 
 /**
  * The config a consumer passes to `UploadStuff(...)`. Adapters are supplied as
- * factories so their `TFileUsageContext`/`TFields` are inferred from this config
- * (no explicit generics at the call site). `NoInfer` keeps `TFields` fixed by the
+ * factories so their `TFields` are inferred from this config (no explicit
+ * generics at the call site). `NoInfer` keeps `TFields` fixed by the
  * central `fields` declaration rather than letting an adapter pin it to `{}`.
  */
-export type CreateUploadStuffConfig<
-  TFileUsageContext extends string,
-  TFields extends FieldsDeclaration = Record<never, never>,
-> = {
-  storageAdapter: StorageAdapterFactory<TFileUsageContext, NoInfer<TFields>>;
-  databaseAdapter: DatabaseAdapterFactory<TFileUsageContext, NoInfer<TFields>>;
+export type CreateUploadStuffConfig<TFields extends FieldsDeclaration = Record<never, never>> = {
+  storageAdapter: StorageAdapterFactory<NoInfer<TFields>>;
+  databaseAdapter: DatabaseAdapterFactory<NoInfer<TFields>>;
   fileIdGenerator?: FileIdGenerator;
   fileKeyGenerator?: FileKeyGenerator;
   filePublicUrlGenerator: FilePublicUrlGenerator;

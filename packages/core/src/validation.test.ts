@@ -15,7 +15,6 @@ const normalize = (
 
 const config = normalize({
   isPublic: false,
-  usageContext: "avatars",
   files: ["image/*"],
   maxFileSize: "5MB",
   maxFileCount: 2,
@@ -42,7 +41,6 @@ describe("validateFiles", () => {
   it("enforces per-entry size limits", () => {
     const normalized = normalize({
       isPublic: false,
-      usageContext: "mixed",
       files: {
         "image/*": { maxFileSize: "5MB" },
         "application/pdf": { maxFileSize: "1MB" },
@@ -57,7 +55,6 @@ describe("validateFiles", () => {
   it("enforces per-entry count limits", () => {
     const normalized = normalize({
       isPublic: false,
-      usageContext: "mixed",
       files: { "image/*": { maxFileCount: 1 } },
       maxFileCount: 10,
     });
@@ -70,7 +67,6 @@ describe("validateFiles", () => {
   it("counts exact and wildcard buckets separately", () => {
     const normalized = normalize({
       isPublic: false,
-      usageContext: "mixed",
       files: {
         "image/png": { maxFileCount: 1 },
         "image/*": { maxFileCount: 1 },
@@ -108,7 +104,6 @@ describe("validateFiles", () => {
   it("rejects any file when maxFileCount is 0", () => {
     const normalized = normalize({
       isPublic: false,
-      usageContext: "avatars",
       files: ["image/*"],
       maxFileCount: 0,
     });
@@ -121,7 +116,6 @@ describe("validateFiles", () => {
   it("falls back application/octet-stream through a blob route", () => {
     const normalized = normalize({
       isPublic: false,
-      usageContext: "raw",
       files: ["blob"],
       maxFileSize: "1MB",
     });
