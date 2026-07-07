@@ -46,9 +46,7 @@ import { s3Adapter } from "@upload-stuff/server/adapters/s3";
 import { prismaAdapter } from "@upload-stuff/server/adapters/prisma";
 import { prisma } from "./prisma";
 
-type FileUsageContext = "avatar" | "document";
-
-export const uploadStuff = UploadStuff<FileUsageContext>({
+export const uploadStuff = UploadStuff({
   storageAdapter: s3Adapter({
     config: {
       region: "us-east-1",
@@ -85,7 +83,6 @@ export const fileRouter = {
   avatar: f({
     isPublic: true,
     files: ["image/*"],
-    usageContext: "avatar",
     maxFileSize: "4MB",
     maxFileCount: 1,
   })

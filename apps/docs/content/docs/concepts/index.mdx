@@ -1,6 +1,6 @@
 ---
 title: Core concepts
-description: The file router, the presigned-upload lifecycle, adapters, usage contexts, and cleanup.
+description: The file router, the presigned-upload lifecycle, adapters, and cleanup.
 ---
 
 upload-stuff has a small set of moving parts. Once these click, the rest of the
@@ -9,11 +9,11 @@ API follows.
 ## The file router
 
 A **file router** is a typed map of named routes. Each route declares what it
-accepts (`type`, `maxFileSize`, `maxFileCount`), a `usageContext`, and a builder
-chain (`.input()`, `.middleware()`, `.onUploadComplete()`). The router type is
-exported once and consumed on the client, which is how the client hook infers its
-own types — there is a single source of truth for every route's shape. See
-[Type safety](/docs/type-safety) for that inference shown end-to-end.
+accepts (`files`, `maxFileSize`, `maxFileCount`) and a builder chain
+(`.input()`, `.middleware()`, `.fields()`, `.onUploadComplete()`). The router
+type is exported once and consumed on the client, which is how the client hook
+infers its own types — there is a single source of truth for every route's
+shape. See [Type safety](/docs/type-safety) for that inference shown end-to-end.
 
 ## The presigned-upload lifecycle
 
@@ -49,34 +49,6 @@ core stays backend-agnostic:
   use any ORM.
 
 See the [API reference](/docs/api) for both interfaces.
-
-## Usage contexts
-
-Every route carries a `usageContext` — a string discriminator (`"avatar"`,
-`"document"`, …) you define as a type parameter. It is stored on each file row so
-you can query, authorize, and clean up by context. The set of valid contexts is a
-TypeScript union you own, so misspelling one is a compile error:
-
-```ts twoslash
-// @errors: 2820
-import { UploadStuff, createUploadStuffRouter } from "@upload-stuff/server";
-import type { StorageAdapter, DatabaseAdapter } from "@upload-stuff/server";
-
-type FileUsageContext = "avatar" | "document";
-declare const storageAdapter: StorageAdapter;
-declare const databaseAdapter: DatabaseAdapter<FileUsageContext>;
-
-const uploadStuff = UploadStuff<FileUsageContext>({
-  storageAdapter,
-  databaseAdapter,
-  filePublicUrlGenerator: ({ key }) => `https://cdn.example.com/${key}`,
-});
-
-const f = createUploadStuffRouter<{ userId: string }, typeof uploadStuff>();
-
-// "avatr" isn't in your usageContext union:
-f({ isPublic: true, files: ["image/*"], usageContext: "avatr", maxFileSize: "4MB" });
-```
 
 ## Cleanup
 

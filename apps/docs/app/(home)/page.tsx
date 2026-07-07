@@ -3,7 +3,7 @@ import { DynamicCodeBlock } from 'fumadocs-ui/components/dynamic-codeblock';
 
 const peek = `// Server — define a typed file router
 export const fileRouter = {
-  avatar: f({ type: "image", usageContext: "avatar", maxFileSize: "4MB" })
+  avatar: f({ files: ["image/*"], maxFileSize: "4MB" })
     .middleware(({ ctx }) => ({ userId: ctx.userId }))
     .onUploadComplete(({ files }) => ({ url: files[0].publicUrl }))
     .build(),

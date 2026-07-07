@@ -28,7 +28,7 @@ without taking over your storage.
 
 ```ts
 // One typed route. The client hook infers its types from this definition.
-avatar: f({ isPublic: true, files: ["image/*"], usageContext: "avatar", maxFileSize: "4MB" })
+avatar: f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
   .middleware(({ ctx }) => ({ userId: ctx.userId }))
   .onUploadComplete(({ files, middlewareData }) => {
     // `files` and `middlewareData` are fully typed — proven, not asserted:

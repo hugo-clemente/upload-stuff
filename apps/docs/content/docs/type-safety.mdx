@@ -28,14 +28,12 @@ import { createUploadStuffClient } from "@upload-stuff/client";
 import { createUploadStuffReactHelpers } from "@upload-stuff/react";
 import { z } from "zod";
 
-type FileUsageContext = "avatar" | "document";
-
 // `declare const` stands in for your real S3 + database adapters, so this whole
 // sample type-checks with no runtime wiring.
 declare const storageAdapter: StorageAdapter;
-declare const databaseAdapter: DatabaseAdapter<FileUsageContext>;
+declare const databaseAdapter: DatabaseAdapter;
 
-const uploadStuff = UploadStuff<FileUsageContext>({
+const uploadStuff = UploadStuff({
   storageAdapter,
   databaseAdapter,
   filePublicUrlGenerator: ({ key }) => `https://cdn.example.com/${key}`,
@@ -46,7 +44,7 @@ type Context = { userId: string };
 const f = createUploadStuffRouter<Context, typeof uploadStuff>();
 
 const fileRouter = {
-  avatar: f({ isPublic: true, files: ["image/*"], usageContext: "avatar", maxFileSize: "4MB" })
+  avatar: f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
     .input(z.object({ folderId: z.string() }))
     .middleware(({ ctx }) => ({ uploadedBy: ctx.userId }))
     .onUploadComplete(({ input, middlewareData }) => {
@@ -97,11 +95,10 @@ import type { StorageAdapter, DatabaseAdapter } from "@upload-stuff/server";
 import { createUploadStuffClient } from "@upload-stuff/client";
 import { createUploadStuffReactHelpers } from "@upload-stuff/react";
 
-type FileUsageContext = "avatar";
 declare const storageAdapter: StorageAdapter;
-declare const databaseAdapter: DatabaseAdapter<FileUsageContext>;
+declare const databaseAdapter: DatabaseAdapter;
 
-const uploadStuff = UploadStuff<FileUsageContext>({
+const uploadStuff = UploadStuff({
   storageAdapter,
   databaseAdapter,
   filePublicUrlGenerator: ({ key }) => `https://cdn.example.com/${key}`,
@@ -111,7 +108,7 @@ type Context = { userId: string };
 const f = createUploadStuffRouter<Context, typeof uploadStuff>();
 
 const fileRouter = {
-  avatar: f({ isPublic: true, files: ["image/*"], usageContext: "avatar", maxFileSize: "4MB" })
+  avatar: f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
     .middleware(({ ctx }) => ({ uploadedBy: ctx.userId }))
     .onUploadComplete(({ middlewareData }) => {
       // `.middleware()` returned `{ uploadedBy }`, so `.role` does not exist:
