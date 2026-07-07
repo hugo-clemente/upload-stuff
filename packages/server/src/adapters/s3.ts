@@ -139,7 +139,7 @@ export const s3Adapter =
 
         const errors: string[] = [];
 
-        if (params.expectedSize && actualSize !== params.expectedSize) {
+        if (actualSize !== params.expectedSize) {
           errors.push(`Size mismatch: expected ${params.expectedSize}, got ${actualSize}`);
         }
 
