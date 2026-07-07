@@ -17,13 +17,12 @@ const opts = { defaultMaxFileCount: 20, defaultMaxFileSize: DEFAULT_MAX_FILE_SIZ
 const config = normalizeRouteConfig(
   {
     isPublic: false,
-    usageContext: "doc",
     files: { "image/*": { maxFileSize: "1MB" }, "application/pdf": { maxFileSize: "16MB" } },
   },
   opts,
 );
 const pdfOnly = normalizeRouteConfig(
-  { isPublic: false, usageContext: "doc", files: ["application/pdf"] },
+  { isPublic: false, files: ["application/pdf"] },
   opts,
 );
 

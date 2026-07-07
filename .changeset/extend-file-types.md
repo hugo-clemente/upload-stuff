@@ -21,7 +21,7 @@ Migration:
 
 ```ts
 // before
-avatar: f({ isPublic: true, type: "image", usageContext: "avatar", maxFileSize: "4MB" })
+avatar: f({ isPublic: true, type: "image", maxFileSize: "4MB" })
 // after
-avatar: f({ isPublic: true, usageContext: "avatar", files: ["image/*"], maxFileSize: "4MB" })
+avatar: f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
 ```

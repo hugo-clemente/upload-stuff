@@ -3,10 +3,9 @@ import { toFetchHandler, type CreateUploadStuffHandlerOptions } from "../fetch-h
 
 export const toNextJsHandler = <
   TContext extends ValidContextObject,
-  TFileUsageContext extends string,
   TFields extends FieldsDeclaration = Record<never, never>,
 >(
-  options: CreateUploadStuffHandlerOptions<TContext, TFileUsageContext, TFields>,
+  options: CreateUploadStuffHandlerOptions<TContext, TFields>,
 ) => {
   const handler = toFetchHandler(options);
 

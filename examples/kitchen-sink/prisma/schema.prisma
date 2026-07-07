@@ -15,7 +15,6 @@ model File {
   publicUrl         String
   contentType       String
   uploadSessionData Json?
-  usageContext      String
   isPublic          Boolean   @default(false)
   stored            Boolean   @default(false)
   storedAt          DateTime?

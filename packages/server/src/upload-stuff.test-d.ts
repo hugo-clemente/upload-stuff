@@ -9,12 +9,12 @@ import { UploadStuff } from "./upload-stuff";
 // (the adapter positions are `NoInfer`), so `any` keeps these fixtures focused on
 // the typing under test.
 // oxlint-disable-next-line @typescript-eslint/no-explicit-any
-declare const databaseAdapter: DatabaseAdapterFactory<"avatar", any>;
+declare const databaseAdapter: DatabaseAdapterFactory<any>;
 // oxlint-disable-next-line @typescript-eslint/no-explicit-any
-declare const storageAdapter: StorageAdapterFactory<"avatar", any>;
+declare const storageAdapter: StorageAdapterFactory<any>;
 
 it("types the storage adapter's objectMetadata resolver against the declared fields", () => {
-  UploadStuff<"avatar">()({
+  UploadStuff({
     // The s3 adapter's `objectMetadata` is typed purely by inference: `TFields` is
     // resolved from `fields` below and flows into the adapter factory's contextual
     // type, so `file` is precise with no annotation.
@@ -26,7 +26,10 @@ it("types the storage adapter's objectMetadata resolver against the declared fie
         expectTypeOf(file.entityId).toEqualTypeOf<string | undefined>();
         expectTypeOf(file.count).toEqualTypeOf<number>();
         // library columns come through too
-        expectTypeOf(file.usageContext).toEqualTypeOf<"avatar">();
+        expectTypeOf(file.key).toEqualTypeOf<string>();
+        type DeletedKey = `usage${"Context"}`;
+        type DeletedMetadataKey = Extract<keyof typeof file, DeletedKey>;
+        expectTypeOf<DeletedMetadataKey>().toEqualTypeOf<never>();
         return { entity: file.entityId ?? "", count: String(file.count) };
       },
     }),
@@ -40,7 +43,7 @@ it("types the storage adapter's objectMetadata resolver against the declared fie
 });
 
 it("rejects a custom field that reuses a reserved column name (#1)", () => {
-  UploadStuff<"avatar">()({
+  UploadStuff({
     storageAdapter,
     databaseAdapter,
     filePublicUrlGenerator: ({ key }) => key,

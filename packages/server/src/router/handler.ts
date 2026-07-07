@@ -37,7 +37,7 @@ export type RouteHandlers = {
     ctx: ValidContextObject,
   ) => Promise<CompleteUploadResult>;
 
-  getConfig: (params: { endpoint: string }) => NormalizedRouteConfig<string>;
+  getConfig: (params: { endpoint: string }) => NormalizedRouteConfig;
 };
 
 export const fileRouteHandlers = ({
@@ -59,7 +59,7 @@ export const fileRouteHandlers = ({
     defaultMaxFileSize: uploadStuff.__defaultMaxFileSize,
   });
 
-  const normalizedConfigs = new Map<string, NormalizedRouteConfig<string>>();
+  const normalizedConfigs = new Map<string, NormalizedRouteConfig>();
   for (const [endpoint, route] of Object.entries(fileRouter)) {
     normalizedConfigs.set(
       endpoint,

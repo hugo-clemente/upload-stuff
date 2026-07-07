@@ -7,7 +7,6 @@ import { MockXHR } from "./mock-xhr";
 // exactly what the client validates and derives `accept` from.
 export const testRouteConfig = {
   isPublic: true,
-  usageContext: "test",
   files: { "image/*": { maxFileSize: "4MB" } },
   maxFileCount: 20,
 };

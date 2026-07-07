@@ -10,14 +10,13 @@ import type { InitUploadFileData, ToUploadFileData, UploadedFileData } from "./s
 export type UnsetMarker = "unsetMarker" & { __brand: "unsetMarker" };
 export type ErrorMessage<TError extends string> = TError;
 
-export type RouteConfig<TFileUsageContext extends string> = {
+export type RouteConfig = {
   isPublic: boolean;
-  usageContext: TFileUsageContext;
   files: FilesConfig;
   maxFileSize?: FileSize;
   maxFileCount?: number;
 };
-export type AnyRouteConfig = RouteConfig<string>;
+export type AnyRouteConfig = RouteConfig;
 
 /**
  * The request context, fully defined by the consumer. The library no longer
@@ -69,23 +68,22 @@ type UploadCompleteFn<
 }) => TOutput | Promise<TOutput>;
 
 export type AnyBuiltUploaderTypes = {
-  fileUsageContext: string;
   input: any;
   output: any;
   middlewareData: any;
   context: any;
 };
 
-export type FileRoute<TTypes extends AnyBuiltUploaderTypes, TFileUsageContext extends string> = {
+export type FileRoute<TTypes extends AnyBuiltUploaderTypes> = {
   $types: TTypes;
-  routeConfig: RouteConfig<TFileUsageContext>;
+  routeConfig: RouteConfig;
   inputParser: Standard.StandardSchemaV1;
   middleware: MiddlewareFn<any, any, ValidMiddlewareObject>;
   fields: FieldsFn<any, any, any, any>;
   onUploadComplete: UploadCompleteFn<any, any, any, any>;
 };
 
-export type AnyFileRoute = FileRoute<AnyBuiltUploaderTypes, any>;
+export type AnyFileRoute = FileRoute<AnyBuiltUploaderTypes>;
 
 /** Keys of a fields declaration whose attributes mark them `required: true`. */
 type RequiredFieldKeys<TFieldsDeclaration> = keyof {
@@ -99,16 +97,12 @@ type HasRequiredField<TFieldsDeclaration> = [RequiredFieldKeys<TFieldsDeclaratio
   ? false
   : true;
 
-type BuiltFileRoute<TParams extends AnyParams, TFileUsageContext extends string> = FileRoute<
-  {
-    fileUsageContext: TFileUsageContext;
-    input: TParams["_input"]["in"];
-    output: TParams["_completeFnData"];
-    middlewareData: TParams["_middlewareData"];
-    context: TParams["_ctx"];
-  },
-  TFileUsageContext
->;
+type BuiltFileRoute<TParams extends AnyParams> = FileRoute<{
+  input: TParams["_input"]["in"];
+  output: TParams["_completeFnData"];
+  middlewareData: TParams["_middlewareData"];
+  context: TParams["_ctx"];
+}>;
 
 type AnyParams = {
   _routeConfig: any;
@@ -123,43 +117,37 @@ type AnyParams = {
   _completeFnData: any;
 };
 
-export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext extends string> {
+export interface UploadBuilder<TParams extends AnyParams> {
   input: <TIn extends Json, TOut>(
     parser: TParams["_input"]["in"] extends UnsetMarker
       ? Standard.StandardSchemaV1<TIn, TOut>
       : ErrorMessage<"input has already been set">,
-  ) => UploadBuilder<
-    {
-      _routeConfig: TParams["_routeConfig"];
-      _input: {
-        in: TIn;
-        out: TOut;
-      };
-      _fields: TParams["_fields"];
-      _fieldsDeclaration: TParams["_fieldsDeclaration"];
-      _middlewareData: TParams["_middlewareData"];
-      _ctx: TParams["_ctx"];
-      _completeFnData: TParams["_completeFnData"];
-    },
-    TFileUsageContext
-  >;
+  ) => UploadBuilder<{
+    _routeConfig: TParams["_routeConfig"];
+    _input: {
+      in: TIn;
+      out: TOut;
+    };
+    _fields: TParams["_fields"];
+    _fieldsDeclaration: TParams["_fieldsDeclaration"];
+    _middlewareData: TParams["_middlewareData"];
+    _ctx: TParams["_ctx"];
+    _completeFnData: TParams["_completeFnData"];
+  }>;
 
   middleware: <TOut extends ValidMiddlewareObject>(
     fn: TParams["_middlewareData"] extends UnsetMarker
       ? MiddlewareFn<TParams["_ctx"], TParams["_input"]["out"], TOut>
       : ErrorMessage<"middleware has already been set">,
-  ) => UploadBuilder<
-    {
-      _routeConfig: TParams["_routeConfig"];
-      _input: TParams["_input"];
-      _fields: TParams["_fields"];
-      _fieldsDeclaration: TParams["_fieldsDeclaration"];
-      _middlewareData: TOut;
-      _ctx: TParams["_ctx"];
-      _completeFnData: TParams["_completeFnData"];
-    },
-    TFileUsageContext
-  >;
+  ) => UploadBuilder<{
+    _routeConfig: TParams["_routeConfig"];
+    _input: TParams["_input"];
+    _fields: TParams["_fields"];
+    _fieldsDeclaration: TParams["_fieldsDeclaration"];
+    _middlewareData: TOut;
+    _ctx: TParams["_ctx"];
+    _completeFnData: TParams["_completeFnData"];
+  }>;
 
   fields: (
     fn: TParams["_fields"] extends UnsetMarker
@@ -170,35 +158,29 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
           TParams["_fieldsDeclaration"]
         >
       : ErrorMessage<"fields has already been set">,
-  ) => UploadBuilder<
-    {
-      _routeConfig: TParams["_routeConfig"];
-      _input: TParams["_input"];
-      _fields: InferFieldValues<TParams["_fieldsDeclaration"]>;
-      _fieldsDeclaration: TParams["_fieldsDeclaration"];
-      _middlewareData: TParams["_middlewareData"];
-      _ctx: TParams["_ctx"];
-      _completeFnData: TParams["_completeFnData"];
-    },
-    TFileUsageContext
-  >;
+  ) => UploadBuilder<{
+    _routeConfig: TParams["_routeConfig"];
+    _input: TParams["_input"];
+    _fields: InferFieldValues<TParams["_fieldsDeclaration"]>;
+    _fieldsDeclaration: TParams["_fieldsDeclaration"];
+    _middlewareData: TParams["_middlewareData"];
+    _ctx: TParams["_ctx"];
+    _completeFnData: TParams["_completeFnData"];
+  }>;
 
   onUploadComplete: <TOut extends Json | void>(
     fn: TParams["_completeFnData"] extends UnsetMarker
       ? UploadCompleteFn<TParams["_ctx"], TParams["_input"]["out"], TParams["_middlewareData"], TOut>
       : ErrorMessage<"onUploadComplete has already been set">,
-  ) => UploadBuilder<
-    {
-      _routeConfig: TParams["_routeConfig"];
-      _input: TParams["_input"];
-      _fields: TParams["_fields"];
-      _fieldsDeclaration: TParams["_fieldsDeclaration"];
-      _ctx: TParams["_ctx"];
-      _middlewareData: TParams["_middlewareData"];
-      _completeFnData: TOut;
-    },
-    TFileUsageContext
-  >;
+  ) => UploadBuilder<{
+    _routeConfig: TParams["_routeConfig"];
+    _input: TParams["_input"];
+    _fields: TParams["_fields"];
+    _fieldsDeclaration: TParams["_fieldsDeclaration"];
+    _ctx: TParams["_ctx"];
+    _middlewareData: TParams["_middlewareData"];
+    _completeFnData: TOut;
+  }>;
 
   /**
    * Finalise the route. When the instance's fields declaration contains a
@@ -209,27 +191,20 @@ export interface UploadBuilder<TParams extends AnyParams, TFileUsageContext exte
   build: () => HasRequiredField<TParams["_fieldsDeclaration"]> extends true
     ? TParams["_fields"] extends UnsetMarker
       ? ErrorMessage<"`.fields()` is required: this instance declares a required custom field">
-      : BuiltFileRoute<TParams, TFileUsageContext>
-    : BuiltFileRoute<TParams, TFileUsageContext>;
+      : BuiltFileRoute<TParams>
+    : BuiltFileRoute<TParams>;
 }
 
 export type UploadStuffRouter = Record<string, AnyFileRoute>;
 
-export type UploadStuffRouterWithContext<
-  TContext extends ValidContextObject,
-  TFileUsageContext extends string,
-> = Record<
+export type UploadStuffRouterWithContext<TContext extends ValidContextObject> = Record<
   string,
-  FileRoute<
-    {
-      fileUsageContext: TFileUsageContext;
-      input: any;
-      output: any;
-      middlewareData: any;
-      context: TContext;
-    },
-    TFileUsageContext
-  >
+  FileRoute<{
+    input: any;
+    output: any;
+    middlewareData: any;
+    context: TContext;
+  }>
 >;
 
 export type InitUploadResult = {

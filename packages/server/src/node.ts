@@ -59,10 +59,9 @@ const toRequest = async (req: NodeRequestLike): Promise<Request> => {
 
 export const toNodeHandler = <
   TContext extends ValidContextObject,
-  TFileUsageContext extends string,
   TFields extends FieldsDeclaration = Record<never, never>,
 >(
-  options: CreateUploadStuffHandlerOptions<TContext, TFileUsageContext, TFields>,
+  options: CreateUploadStuffHandlerOptions<TContext, TFields>,
 ) => {
   const handler = toFetchHandler(options);
 

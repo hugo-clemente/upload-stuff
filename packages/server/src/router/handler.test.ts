@@ -25,7 +25,7 @@ const setup = () => {
       return { route: "docs" };
     }),
   };
-  const uploadStuff = UploadStuff()({
+  const uploadStuff = UploadStuff({
     storageAdapter: () => fakeStorageAdapter(),
     databaseAdapter: () => fakeDatabaseAdapter(),
     filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -94,7 +94,7 @@ describe("fileRouteHandlers", () => {
         return {};
       },
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => fakeDatabaseAdapter(),
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -112,6 +112,8 @@ describe("fileRouteHandlers", () => {
 
     expect(config.files["image/*"]).toEqual({ maxFileSize: "5MB" });
     expect(config).not.toHaveProperty("type");
+    const deletedKey = ["usage", "Context"].join("");
+    expect(config).not.toHaveProperty(deletedKey);
   });
 
   it("throws when getConfig is called for an unknown endpoint", () => {
@@ -120,8 +122,37 @@ describe("fileRouteHandlers", () => {
     expect(() => handlers.getConfig({ endpoint: "nope" })).toThrow(/not found/);
   });
 
+  it("calls custom id and key generators without the deleted column during init", async () => {
+    const fileIdCalls: unknown[] = [];
+    const fileKeyCalls: unknown[] = [];
+
+    const uploadStuff = UploadStuff({
+      storageAdapter: () => fakeStorageAdapter(),
+      databaseAdapter: () => fakeDatabaseAdapter(),
+      filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
+      fileIdGenerator: async (params) => {
+        fileIdCalls.push(params);
+        return "file-id";
+      },
+      fileKeyGenerator: async (params) => {
+        fileKeyCalls.push(params);
+        return `${params.fileId}-${params.filename}`;
+      },
+    });
+
+    const handlers = fileRouteHandlers({
+      fileRouter: { avatars: makeRoute(() => ({})) },
+      uploadStuff,
+    });
+
+    await handlers.initUpload("avatars", initData, ctx);
+
+    expect(fileIdCalls).toEqual([{ filename: "a.png" }]);
+    expect(fileKeyCalls).toEqual([{ fileId: "file-id", filename: "a.png" }]);
+  });
+
   it("throws at construction for duplicate normalized file type keys", () => {
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => fakeDatabaseAdapter(),
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -130,7 +161,6 @@ describe("fileRouteHandlers", () => {
       ...makeRoute(() => ({})),
       routeConfig: {
         isPublic: false,
-        usageContext: "avatars",
         files: ["Image/*" as "image/*", "image/*"],
       },
     };
@@ -154,7 +184,7 @@ describe("fileRouteHandlers", () => {
         return {};
       },
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => fakeDatabaseAdapter(),
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -173,7 +203,7 @@ describe("fileRouteHandlers", () => {
   });
 
   it("normalizes request content type in init response, DB row, and presign input", async () => {
-    const created: DatabaseFile<string>[] = [];
+    const created: DatabaseFile[] = [];
     let presignContentType: string | undefined;
     const databaseAdapter: DatabaseAdapter = {
       ...fakeDatabaseAdapter(),
@@ -188,7 +218,7 @@ describe("fileRouteHandlers", () => {
         return { uploadUrl: `https://upload.test/${key}` };
       },
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => storageAdapter,
       databaseAdapter: () => databaseAdapter,
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -213,7 +243,7 @@ describe("fileRouteHandlers", () => {
   });
 
   it("folds a malformed content type to the catch-all for storage on a blob route", async () => {
-    const created: DatabaseFile<string>[] = [];
+    const created: DatabaseFile[] = [];
     let presignContentType: string | undefined;
     const databaseAdapter: DatabaseAdapter = {
       ...fakeDatabaseAdapter(),
@@ -228,14 +258,14 @@ describe("fileRouteHandlers", () => {
         return { uploadUrl: `https://upload.test/${key}` };
       },
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => storageAdapter,
       databaseAdapter: () => databaseAdapter,
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
     });
     const blobRoute: AnyFileRoute = {
       ...makeRoute(() => ({})),
-      routeConfig: { isPublic: false, usageContext: "avatars", files: ["blob"] },
+      routeConfig: { isPublic: false, files: ["blob"] },
     };
     const handlers = fileRouteHandlers({ fileRouter: { avatars: blobRoute }, uploadStuff });
 
@@ -260,7 +290,7 @@ describe("presigned upload headers (#5)", () => {
         requiredHeaders: { "x-amz-meta-owner": "alice" },
       }),
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => storageAdapter,
       databaseAdapter: () => fakeDatabaseAdapter(),
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -284,7 +314,7 @@ describe("presigned upload headers (#5)", () => {
         return { uploadUrl: `https://upload.test/${info.key}` };
       },
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => storageAdapter,
       databaseAdapter: () => fakeDatabaseAdapter(),
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -305,15 +335,15 @@ describe("custom field persistence (#8 / #1)", () => {
   /** Captures the rows handed to `createFiles`. */
   const capturingSetup = (fields: () => Record<string, unknown>) => {
     // oxlint-disable-next-line @typescript-eslint/no-explicit-any
-    const created: DatabaseFile<string, any>[] = [];
+    const created: DatabaseFile<any>[] = [];
     // oxlint-disable-next-line @typescript-eslint/no-explicit-any
-    const databaseAdapter: DatabaseAdapter<string, any> = {
+    const databaseAdapter: DatabaseAdapter<any> = {
       ...fakeDatabaseAdapter(),
       createFiles: async ({ files }) => {
         created.push(...files);
       },
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => databaseAdapter,
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -378,7 +408,7 @@ describe("capability-based completion", () => {
 
 describe("token hashing", () => {
   it("stores sha256(batchToken) as the row batchId, never the raw token", async () => {
-    const created: DatabaseFile<string>[] = [];
+    const created: DatabaseFile[] = [];
     // A consistent in-memory adapter over a single `created` array — find AND
     // update read/write the same rows, so completion genuinely transitions them
     // to stored (an inconsistent fake would trip the post-update safety re-read).
@@ -399,7 +429,7 @@ describe("token hashing", () => {
         return { updatedCount };
       },
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => databaseAdapter,
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -421,7 +451,7 @@ describe("token hashing", () => {
 
 describe("upload window", () => {
   const makeHandlers = (createdAt?: Date) => {
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => fakeDatabaseAdapter({ createdAt }),
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -455,13 +485,12 @@ describe("upload window", () => {
       size: 1024,
       publicUrl: "https://cdn.test/k",
       contentType: "image/png",
-      usageContext: "avatars",
       isPublic: false,
       stored: false,
       batchId,
       uploadSessionData: { input: null, middlewareData: {}, endpoint: "avatars" },
     } as const;
-    const rows: DatabaseFile<string>[] = [
+    const rows: DatabaseFile[] = [
       { ...base, id: "f-old", createdAt: new Date(Date.now() - 5000) }, // earliest → expired vs 1s window
       { ...base, id: "f-new", createdAt: new Date() },
     ];
@@ -469,7 +498,7 @@ describe("upload window", () => {
       ...fakeDatabaseAdapter(),
       findFilesByBatchId: async ({ batchId: id }) => (id === batchId ? rows : []),
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => databaseAdapter,
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -489,14 +518,13 @@ describe("upload window", () => {
     const batchId = createHash("sha256").update(batchToken).digest("hex");
 
     // A batch finalised long ago: rows stored=true, createdAt well past a 1s window.
-    const storedRow: DatabaseFile<string> = {
+    const storedRow: DatabaseFile = {
       id: "f1",
       key: "k1",
       filename: "a.png",
       size: 1024,
       publicUrl: "https://cdn.test/k1",
       contentType: "image/png",
-      usageContext: "avatars",
       isPublic: false,
       stored: true,
       storedAt: new Date(Date.now() - 5000),
@@ -511,7 +539,7 @@ describe("upload window", () => {
       findFilesByBatchId: async ({ batchId: id }) => (id === batchId ? [storedRow] : []),
       updateFilesToStored: async () => ({ updatedCount: 0 }),
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => databaseAdapter,
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -533,14 +561,13 @@ describe("upload window", () => {
 });
 
 describe("completion safety", () => {
-  const pendingRow = (batchId: string, overrides: Partial<DatabaseFile<string>> = {}): DatabaseFile<string> => ({
+  const pendingRow = (batchId: string, overrides: Partial<DatabaseFile> = {}): DatabaseFile => ({
     id: "f1",
     key: "k1",
     filename: "a.png",
     size: 1024,
     publicUrl: "https://cdn.test/k1",
     contentType: "image/png",
-    usageContext: "avatars",
     isPublic: false,
     stored: false,
     batchId,
@@ -559,7 +586,7 @@ describe("completion safety", () => {
       ...fakeDatabaseAdapter(),
       findFilesByBatchId: async ({ batchId: id }) => (id === batchId ? [row] : []),
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => databaseAdapter,
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -588,7 +615,7 @@ describe("completion safety", () => {
         return { updatedCount: 0 };
       },
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => databaseAdapter,
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,

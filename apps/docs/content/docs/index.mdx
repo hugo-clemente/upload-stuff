@@ -17,17 +17,17 @@ import { UploadStuff, createUploadStuffRouter } from "@upload-stuff/server";
 import type { StorageAdapter, DatabaseAdapter } from "@upload-stuff/server";
 
 declare const storageAdapter: StorageAdapter;
-declare const databaseAdapter: DatabaseAdapter<"avatar">;
+declare const databaseAdapter: DatabaseAdapter;
 
-const uploadStuff = UploadStuff<"avatar">({
+const uploadStuff = UploadStuff({
   storageAdapter,
   databaseAdapter,
   filePublicUrlGenerator: ({ key }) => `https://cdn.example.com/${key}`,
 });
 
-const f = createUploadStuffRouter<{ userId: string }, typeof uploadStuff>();
+const f = createUploadStuffRouter<typeof uploadStuff, { userId: string }>();
 
-const avatar = f({ isPublic: true, files: ["image/*"], usageContext: "avatar", maxFileSize: "4MB" })
+const avatar = f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
   .middleware(({ ctx }) => ({ uploadedBy: ctx.userId }))
   .onUploadComplete(({ middlewareData }) => ({ owner: middlewareData.uploadedBy }))
   .build();

@@ -11,12 +11,11 @@ import type {
   StorageObjectInfo,
 } from "@upload-stuff/core";
 
-// Curried + generic so it's supplied to `UploadStuff(...)` as a factory: the
-// library calls it with a type marker that infers TFileUsageContext/TFields, which
-// in turn types this adapter's own `objectMetadata` resolver.
+// Generic so it's supplied to `UploadStuff(...)` as a factory: the library calls
+// it with a type marker that infers the instance fields, which in turn types this
+// adapter's own `objectMetadata` resolver.
 export const s3Adapter =
   <
-    TFileUsageContext extends string = string,
     TFields extends FieldsDeclaration = Record<never, never>,
   >(params: {
     config: AWS.S3ClientConfig;
@@ -26,9 +25,9 @@ export const s3Adapter =
      * instance's declared `fields`. Returns a flat string map written as object
      * metadata. Defaults to none.
      */
-    objectMetadata?: ObjectMetadataResolver<TFileUsageContext, TFields>;
+    objectMetadata?: ObjectMetadataResolver<TFields>;
   }) =>
-  (_info: AdapterTypeInfo<TFileUsageContext, TFields>): StorageAdapter => {
+  (_info: AdapterTypeInfo<TFields>): StorageAdapter => {
   const s3Client = new AWS.S3Client(params.config);
   const bucket = params.bucket;
 
@@ -65,10 +64,9 @@ export const s3Adapter =
       filename: info.filename,
       size: info.size,
       contentType: info.contentType,
-      usageContext: info.usageContext as TFileUsageContext,
       isPublic: info.isPublic,
       ...(info.fields as InferFieldValues<TFields>),
-    } as ObjectMetadataInput<TFileUsageContext, TFields>) ?? {};
+    } as ObjectMetadataInput<TFields>) ?? {};
 
   const buildPutObjectInput = (
     info: StorageObjectInfo,

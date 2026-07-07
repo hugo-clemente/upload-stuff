@@ -46,9 +46,7 @@ import { s3Adapter } from "@upload-stuff/server/adapters/s3";
 import { prismaAdapter } from "@upload-stuff/server/adapters/prisma";
 import { prisma } from "./prisma"; // your PrismaClient instance
 
-type FileUsageContext = "avatar" | "document";
-
-export const uploadStuff = UploadStuff<FileUsageContext>()({
+export const uploadStuff = UploadStuff({
   storageAdapter: s3Adapter({
     config: {
       region: "us-east-1",
@@ -75,9 +73,9 @@ export const uploadStuff = UploadStuff<FileUsageContext>()({
 });
 ```
 
-`UploadStuff<FileUsageContext>()` is curried: the type argument fixes the file-usage-context union, and the second call infers the `fields` declaration from the config.
+`UploadStuff({ ... })` infers the `fields` declaration from the config.
 
-The adapters are supplied as factories (`s3Adapter(...)`, `prismaAdapter(...)`): the library calls each with the instance's resolved types, so `TFileUsageContext` and `fields` are inferred end-to-end — you never pass adapter generics by hand, and an adapter's own typed options (like the S3 adapter's `objectMetadata`) are typed against your `fields` automatically.
+The adapters are supplied as factories (`s3Adapter(...)`, `prismaAdapter(...)`): the library calls each with the instance's resolved types, so `fields` are inferred end-to-end — you never pass adapter generics by hand, and an adapter's own typed options (like the S3 adapter's `objectMetadata`) are typed against your `fields` automatically.
 
 ### 2. Define a file router
 
@@ -89,13 +87,12 @@ import { uploadStuff } from "./upload-stuff";
 
 type Context = { userId: string };
 
-const f = createUploadStuffRouter<Context, typeof uploadStuff>();
+const f = createUploadStuffRouter<typeof uploadStuff, Context>();
 
 export const fileRouter = {
   avatar: f({
     isPublic: true,
     files: ["image/*"],
-    usageContext: "avatar",
     maxFileSize: "4MB",
     maxFileCount: 1,
   })
@@ -112,7 +109,6 @@ export const fileRouter = {
   document: f({
     isPublic: false,
     files: ["image/*"],
-    usageContext: "document",
     maxFileSize: "16MB",
   })
     .input(z.object({ folderId: z.string() }))
@@ -279,7 +275,6 @@ model File {
   publicUrl         String
   contentType       String
   uploadSessionData Json?
-  usageContext      String
   isPublic          Boolean   @default(false)
   stored            Boolean   @default(false)
   storedAt          DateTime?
@@ -299,7 +294,7 @@ For any other ORM or database, implement the `DatabaseAdapter` interface from `@
 ```ts
 import type { DatabaseAdapterFactory } from "@upload-stuff/core";
 
-const myAdapter: DatabaseAdapterFactory<"avatar" | "document"> = () => ({
+const myAdapter: DatabaseAdapterFactory = () => ({
   createFiles: async ({ files }) => {
     /* ... */
   },
@@ -339,7 +334,6 @@ await uploadStuff.serverUtils.uploadFile({
     filename: "report.png",
     contentType: "image/png",
     size: buffer.byteLength,
-    usageContext: "document",
     isPublic: false,
     // plus any columns declared in `fields`, e.g.:
     userId: "user-1",
@@ -353,7 +347,7 @@ await uploadStuff.serverUtils.deleteFiles([fileId]);
 
 ## Route builder API
 
-`createUploadStuffRouter<TContext, TUploadStuff>()` returns a function that accepts a `RouteConfig` and returns an `UploadBuilder`. The builder methods are chainable:
+`createUploadStuffRouter<TUploadStuff, TContext>()` returns a function that accepts a `RouteConfig` and returns an `UploadBuilder`. The builder methods are chainable:
 
 | Method                  | Description                                                                                |
 | ----------------------- | ------------------------------------------------------------------------------------------ |
@@ -367,8 +361,7 @@ await uploadStuff.serverUtils.deleteFiles([fileId]);
 
 | Field          | Type                                                                | Description                                |
 | -------------- | ------------------------------------------------------------------- | ------------------------------------------ |
-| `usageContext` | `TFileUsageContext`                                                 | Discriminator stored in the database       |
-| `type`         | `AcceptedFileType \| AcceptedFileType[]` (currently only `"image"`) | Accepted file category                     |
+| `files`        | `FilesConfig`                                                       | Accepted MIME types and per-type limits    |
 | `maxFileSize`  | `FileSize` (e.g. `"4MB"`)                                           | Maximum file size per file                 |
 | `maxFileCount` | `number` (optional)                                                 | Maximum number of files per batch          |
 | `isPublic`     | `boolean`                                                           | Whether the S3 object ACL is `public-read` |

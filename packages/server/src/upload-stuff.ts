@@ -58,16 +58,14 @@ const defaultFileIdGenerator = createId;
 const defaultFileKeyGenerator = (params: {
   fileId: string;
   filename: string;
-  usageContext: string;
 }) => {
   return `${params.fileId}-${params.filename}`;
 };
 
 const buildServerUtils = <
-  TFileUsageContext extends string,
   TFields extends FieldsDeclaration = Record<never, never>,
 >(
-  config: UploadStuffConfig<TFileUsageContext, TFields>,
+  config: UploadStuffConfig<TFields>,
 ) => {
   const deleteFiles = async (fileIds: string[]) => {
     await config.databaseAdapter.deleteFiles({
@@ -91,20 +89,18 @@ const buildServerUtils = <
 
     uploadFile: async (params: {
       data: Omit<
-        DatabaseFile<TFileUsageContext, TFields>,
+        DatabaseFile<TFields>,
         "stored" | "id" | "key" | "storedAt" | "batchId" | "publicUrl" | "uploadSessionData"
       >;
       content: FileUploadContent;
     }) => {
       const id = await config.fileIdGenerator({
         filename: params.data.filename,
-        usageContext: params.data.usageContext,
       });
 
       const key = await config.fileKeyGenerator({
         fileId: id,
         filename: params.data.filename,
-        usageContext: params.data.usageContext,
       });
 
       const publicUrl = await config.filePublicUrlGenerator({
@@ -127,7 +123,7 @@ const buildServerUtils = <
             key,
             publicUrl,
             stored: false,
-          } as DatabaseFile<TFileUsageContext, TFields>,
+          } as DatabaseFile<TFields>,
         ],
       });
 
@@ -141,7 +137,6 @@ const buildServerUtils = <
         filename: params.data.filename,
         contentType: params.data.contentType,
         size: params.data.size,
-        usageContext: params.data.usageContext,
         isPublic: params.data.isPublic,
         fields: fieldValues,
         content: params.content,
@@ -152,7 +147,7 @@ const buildServerUtils = <
           id: id,
           stored: true,
           storedAt: new Date(),
-        } as Partial<DatabaseFile<TFileUsageContext, TFields>> & { id: string },
+        } as Partial<DatabaseFile<TFields>> & { id: string },
       });
 
       return file;
@@ -163,16 +158,14 @@ const buildServerUtils = <
 };
 
 export type UploadStuff<
-  TFileUsageContext extends string,
   TFields extends FieldsDeclaration = Record<never, never>,
 > = {
   $types: {
-    fileUsageContext: TFileUsageContext;
     fields: TFields;
   };
-  serverUtils: ReturnType<typeof buildServerUtils<TFileUsageContext, TFields>>;
+  serverUtils: ReturnType<typeof buildServerUtils<TFields>>;
   __storageAdapter: StorageAdapter;
-  __databaseAdapter: DatabaseAdapter<TFileUsageContext, TFields>;
+  __databaseAdapter: DatabaseAdapter<TFields>;
   __fileIdGenerator: FileIdGenerator;
   __fileKeyGenerator: FileKeyGenerator;
   __filePublicUrlGenerator: FilePublicUrlGenerator;
@@ -192,31 +185,28 @@ export type UploadStuff<
  */
 export type AnyUploadStuff = Omit<
   // oxlint-disable-next-line @typescript-eslint/no-explicit-any
-  UploadStuff<any, any>,
+  UploadStuff<any>,
   "serverUtils"
 > & {
   serverUtils: unknown;
 };
 
 /**
- * Create an UploadStuff instance. Curried so the file-usage-context union can be
- * given explicitly while the custom-`fields` declaration is inferred from the
- * config (TypeScript can't partially infer generics in a single call).
+ * Create an UploadStuff instance. The custom-`fields` declaration is inferred
+ * directly from the single config object and carried to adapters via a type marker.
  *
  * ```ts
- * const uploadStuff = UploadStuff<"avatar" | "document">()({ ...config });
+ * const uploadStuff = UploadStuff({ ...config });
  * ```
  */
-export const UploadStuff =
-  <TFileUsageContext extends string = string>() =>
-  <TFields extends FieldsDeclaration = Record<never, never>>(
-    // The `& { fields?: ValidateFieldsDeclaration<TFields> }` intersection blocks
-    // declaring a custom field whose name collides with a reserved column (#1) at
-    // the type level, while keeping `TFields` inferred from `config.fields`.
-    config: CreateUploadStuffConfig<TFileUsageContext, TFields> & {
-      fields?: ValidateFieldsDeclaration<TFields>;
-    },
-  ): UploadStuff<TFileUsageContext, TFields> => {
+export const UploadStuff = <TFields extends FieldsDeclaration = Record<never, never>>(
+  // The `& { fields?: ValidateFieldsDeclaration<TFields> }` intersection blocks
+  // declaring a custom field whose name collides with a reserved column (#1) at
+  // the type level, while keeping `TFields` inferred from `config.fields`.
+  config: CreateUploadStuffConfig<TFields> & {
+    fields?: ValidateFieldsDeclaration<TFields>;
+  },
+): UploadStuff<TFields> => {
     const {
       storageAdapter: storageAdapterFactory,
       databaseAdapter: databaseAdapterFactory,
@@ -252,19 +242,18 @@ export const UploadStuff =
     }
 
     // Resolve the adapter factories once, here — this is where each adapter
-    // receives the instance's inferred TFileUsageContext/TFields. The marker is
-    // type-only; adapters ignore it at runtime.
-    const typeInfo = {} as AdapterTypeInfo<TFileUsageContext, TFields>;
+    // receives the instance's inferred fields declaration. The marker is type-only;
+    // adapters ignore it at runtime.
+    const typeInfo = {} as AdapterTypeInfo<TFields>;
     const storageAdapter = storageAdapterFactory(typeInfo);
     const databaseAdapter = databaseAdapterFactory(typeInfo);
 
     return {
       $types: undefined as unknown as {
-        fileUsageContext: TFileUsageContext;
         fields: TFields;
       },
 
-      serverUtils: buildServerUtils<TFileUsageContext, TFields>({
+      serverUtils: buildServerUtils<TFields>({
         storageAdapter,
         databaseAdapter,
         fileIdGenerator,
@@ -287,4 +276,4 @@ export const UploadStuff =
       __defaultMaxFileCount: resolvedDefaultMaxFileCount,
       __defaultMaxFileSize: resolvedDefaultMaxFileSize,
     };
-  };
+};

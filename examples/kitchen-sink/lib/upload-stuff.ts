@@ -13,7 +13,7 @@ const BUCKET = "uploads";
 // no explicit generics anywhere. `fields` is the single source of truth, and the
 // s3 adapter's `objectMetadata` is typed against it by inference (file.userId /
 // file.caption are typed with no annotation).
-export const uploadStuff = UploadStuff<"image" | "document">()({
+export const uploadStuff = UploadStuff({
   storageAdapter: s3Adapter({
     config: {
       region: "us-east-1",

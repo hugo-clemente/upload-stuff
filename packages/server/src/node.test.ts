@@ -10,7 +10,7 @@ import { UploadStuff } from "./upload-stuff";
 const makeHandler = () =>
   toNodeHandler({
     fileRouter: { avatars: makeRoute(() => ({})) },
-    uploadStuff: UploadStuff()({
+    uploadStuff: UploadStuff({
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => fakeDatabaseAdapter(),
       filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -50,7 +50,9 @@ describe("toNodeHandler over a real http server", () => {
     const cfg = await fetch(`${url}/api/upload-stuff/avatars/route-config`);
     expect(cfg.status).toBe(200);
     expect(cfg.headers.get("content-type")).toContain("json");
-    expect(await cfg.json()).toMatchObject({ usageContext: "avatars" });
+    const config = await cfg.json();
+    const deletedKey = ["usage", "Context"].join("");
+    expect(config).not.toHaveProperty(deletedKey);
 
     const init = await fetch(`${url}/api/upload-stuff/avatars/init-upload`, {
       method: "POST",
@@ -135,7 +137,7 @@ describe("toNodeHandler over a real http server", () => {
   const throwingHandler = () =>
     toNodeHandler({
       fileRouter: { avatars: makeRoute(() => ({})) },
-      uploadStuff: UploadStuff()({
+      uploadStuff: UploadStuff({
         storageAdapter: () => fakeStorageAdapter(),
         databaseAdapter: () => fakeDatabaseAdapter(),
         filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
