@@ -112,7 +112,7 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
       resolveEndpoint<TFileRouter, TEndpoint>(endpoint) as string,
       opts?.force,
       // The server serves the NORMALIZED config, not the authored `routeConfig`.
-    ) as Promise<NormalizedRouteConfig<TFileRouter[TEndpoint]["$types"]["fileUsageContext"]>>;
+    ) as Promise<NormalizedRouteConfig>;
 
   const uploadFiles = async <TEndpoint extends keyof TFileRouter>(
     endpoint: EndpointArg<TFileRouter, TEndpoint>,

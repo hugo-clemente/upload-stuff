@@ -193,7 +193,7 @@ describe("uploadFiles — failures", () => {
     // matching with an opaque TypeError.
     mockFetch({
       routeConfig: () =>
-        jsonResponse({ isPublic: true, type: "image", usageContext: "test", maxFileSize: "4MB" }),
+        jsonResponse({ isPublic: true, type: "image", maxFileSize: "4MB" }),
     });
     const client = makeClient();
     await expect(client.uploadFiles("image", [png()])).rejects.toThrow(

@@ -16,7 +16,7 @@ export interface CreateUploadStuffClientOptions {
 export type UploadCallbacks<TRoute extends AnyFileRoute> = {
   onBeforeUploadBegin?: (params: {
     files: File[];
-    config: NormalizedRouteConfig<TRoute["$types"]["fileUsageContext"]>;
+    config: NormalizedRouteConfig;
   }) => Promise<File[]> | File[];
   onUploadBegin?: (params: { file: string }) => void;
   /**
@@ -39,7 +39,7 @@ export type UploadFilesOptions<TRoute extends AnyFileRoute> = UploadCallbacks<TR
    * Skip the engine's route-config fetch when the caller already has the
    * config (e.g. a framework binding that fetched it for UI state).
    */
-  routeConfig?: NormalizedRouteConfig<TRoute["$types"]["fileUsageContext"]>;
+  routeConfig?: NormalizedRouteConfig;
 };
 
 export type UploadFilesArgs<TRoute extends AnyFileRoute> =
