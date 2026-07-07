@@ -12,7 +12,6 @@ export const fileRouter = {
   image: f({
     isPublic: true,
     files: ["image/*"],
-    usageContext: "image",
     maxFileSize: "8MB",
     maxFileCount: 1,
   })
@@ -29,7 +28,6 @@ export const fileRouter = {
     .build(),
   document: f({
     isPublic: false,
-    usageContext: "document",
     files: {
       "image/*": { maxFileSize: "8MB", maxFileCount: 4 },
       "application/pdf": { maxFileSize: "16MB" },

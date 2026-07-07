@@ -8,7 +8,7 @@ completion model.
 
 ## What it demonstrates
 
-- Curried `UploadStuff<"image">()` with a central typed `fields` (`caption`, `userId`)
+- Single-call `UploadStuff({ ... })` with central typed `fields` (`caption`, `userId`)
   and the s3 adapter's typed `objectMetadata` resolver (`owner` + `caption` → S3 object
   metadata) — adapters are factories, so no adapter generics are passed by hand.
 - A file route using `.input()`, `.fields()`, `.middleware()`, and `.onUploadComplete()`
