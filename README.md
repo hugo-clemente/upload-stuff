@@ -87,7 +87,7 @@ import { uploadStuff } from "./upload-stuff";
 
 type Context = { userId: string };
 
-const f = createUploadStuffRouter<Context, typeof uploadStuff>();
+const f = createUploadStuffRouter<typeof uploadStuff, Context>();
 
 export const fileRouter = {
   avatar: f({
@@ -347,7 +347,7 @@ await uploadStuff.serverUtils.deleteFiles([fileId]);
 
 ## Route builder API
 
-`createUploadStuffRouter<TContext, TUploadStuff>()` returns a function that accepts a `RouteConfig` and returns an `UploadBuilder`. The builder methods are chainable:
+`createUploadStuffRouter<TUploadStuff, TContext>()` returns a function that accepts a `RouteConfig` and returns an `UploadBuilder`. The builder methods are chainable:
 
 | Method                  | Description                                                                                |
 | ----------------------- | ------------------------------------------------------------------------------------------ |

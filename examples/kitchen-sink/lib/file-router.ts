@@ -6,7 +6,7 @@ import { uploadStuff } from "./upload-stuff";
 
 type Context = { userId: string };
 
-const f = createUploadStuffRouter<Context, typeof uploadStuff>();
+const f = createUploadStuffRouter<typeof uploadStuff, Context>();
 
 export const fileRouter = {
   image: f({

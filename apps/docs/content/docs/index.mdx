@@ -25,7 +25,7 @@ const uploadStuff = UploadStuff({
   filePublicUrlGenerator: ({ key }) => `https://cdn.example.com/${key}`,
 });
 
-const f = createUploadStuffRouter<{ userId: string }, typeof uploadStuff>();
+const f = createUploadStuffRouter<typeof uploadStuff, { userId: string }>();
 
 const avatar = f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
   .middleware(({ ctx }) => ({ uploadedBy: ctx.userId }))

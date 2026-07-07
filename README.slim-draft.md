@@ -29,7 +29,7 @@ pnpm add @upload-stuff/client
 
 ```ts
 // Define a typed file router on the server
-const f = createUploadStuffRouter<Context, typeof uploadStuff>();
+const f = createUploadStuffRouter<typeof uploadStuff, Context>();
 
 export const fileRouter = {
   avatar: f({ files: ["image/*"], maxFileSize: "4MB" })

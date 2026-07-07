@@ -41,7 +41,7 @@ const uploadStuff = UploadStuff({
 
 // ---- Server: one typed route ----
 type Context = { userId: string };
-const f = createUploadStuffRouter<Context, typeof uploadStuff>();
+const f = createUploadStuffRouter<typeof uploadStuff, Context>();
 
 const fileRouter = {
   avatar: f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
@@ -105,7 +105,7 @@ const uploadStuff = UploadStuff({
 });
 
 type Context = { userId: string };
-const f = createUploadStuffRouter<Context, typeof uploadStuff>();
+const f = createUploadStuffRouter<typeof uploadStuff, Context>();
 
 const fileRouter = {
   avatar: f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })

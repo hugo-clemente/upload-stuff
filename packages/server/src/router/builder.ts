@@ -87,7 +87,10 @@ const internalCreateBuilder = <
 };
 
 export const createUploadStuffRouter =
-  <TContext extends ValidContextObject, TUploadStuff extends UploadStuff<any>>() =>
+  <
+    TUploadStuff extends UploadStuff<any>,
+    TContext extends ValidContextObject = Record<never, never>,
+  >() =>
   (
     routeConfig: RouteConfig,
   ): UploadBuilder<{
