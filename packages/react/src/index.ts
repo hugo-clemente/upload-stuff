@@ -65,7 +65,7 @@ export type UseUploadStuffReturn<TRoute extends AnyFileRoute> = {
    * Abort the in-flight upload. No-op when idle.
    */
   abort: () => void;
-  routeConfig?: NormalizedRouteConfig<TRoute["$types"]["fileUsageContext"]>;
+  routeConfig?: NormalizedRouteConfig;
   accept?: string;
 };
 
@@ -75,7 +75,7 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
   const useRouteConfig = <TEndpoint extends keyof TFileRouter>(endpoint: TEndpoint) => {
     type State = {
       endpoint: TEndpoint;
-      data?: NormalizedRouteConfig<TFileRouter[TEndpoint]["$types"]["fileUsageContext"]>;
+      data?: NormalizedRouteConfig;
       error?: Error;
       isLoading: boolean;
     };

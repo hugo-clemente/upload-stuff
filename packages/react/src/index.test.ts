@@ -8,7 +8,6 @@ import { createUploadStuffReactHelpers } from "./index";
 
 const routeConfig = {
   isPublic: true,
-  usageContext: "test",
   files: { "image/*": { maxFileSize: "4MB" } },
   maxFileCount: 20,
 };
