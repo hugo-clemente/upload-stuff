@@ -7,7 +7,7 @@ import type {
 
 /** In-memory database adapter for tests. */
 export const fakeDatabaseAdapter = (opts: { createdAt?: Date } = {}): DatabaseAdapter => {
-  let rows: DatabaseFile<string>[] = [];
+  let rows: DatabaseFile[] = [];
   return {
     createFiles: async ({ files }) => {
       // `opts.createdAt` is a test override (wins over the core-stamped value) so
@@ -59,7 +59,6 @@ export const makeRoute = (onComplete: () => unknown): AnyFileRoute => ({
   $types: {} as AnyFileRoute["$types"],
   routeConfig: {
     isPublic: false,
-    usageContext: "avatars",
     files: ["image/*"],
     maxFileSize: "5MB",
   },

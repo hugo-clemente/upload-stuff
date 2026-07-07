@@ -5,6 +5,8 @@ import {
   normalizeContentType,
   validateFiles,
   type CompleteUploadResult,
+  type DatabaseFile,
+  type FieldsDeclaration,
   type InitUploadFileData,
   type InitUploadResult,
   type Json,
@@ -15,10 +17,10 @@ import {
 
 import { pickDeclaredFields } from "../fields";
 
-interface InitUploadHandler<TFileUsageContext extends string> {
+interface InitUploadHandler {
   (params: {
     files: Array<InitUploadFileData>;
-    config: NormalizedRouteConfig<TFileUsageContext>;
+    config: NormalizedRouteConfig;
     input: Json;
     fieldValues: Record<string, unknown>;
     middlewareData: ValidMiddlewareObject;
@@ -68,8 +70,8 @@ const uploadSessionDataSchema = z.object({
   endpoint: z.string(),
 });
 
-export const createCore = <TFileUsageContext extends string>(
-  config: UploadStuffConfig<TFileUsageContext>,
+export const createCore = <TFields extends FieldsDeclaration = Record<never, never>>(
+  config: UploadStuffConfig<TFields>,
 ) => {
   const {
     storageAdapter,
@@ -81,7 +83,7 @@ export const createCore = <TFileUsageContext extends string>(
     uploadWindowSeconds,
   } = config;
 
-  const initUpload: InitUploadHandler<TFileUsageContext> = async ({
+  const initUpload: InitUploadHandler = async ({
     files,
     config,
     input,
@@ -123,13 +125,11 @@ export const createCore = <TFileUsageContext extends string>(
         const contentType = normalizeContentType(file.contentType);
         const id = await fileIdGenerator({
           filename: file.filename,
-          usageContext: config.usageContext,
         });
 
         const key = await fileKeyGenerator({
           fileId: id,
           filename: file.filename,
-          usageContext: config.usageContext,
         });
 
         const [publicUrl, uploadData] = await Promise.all([
@@ -139,7 +139,6 @@ export const createCore = <TFileUsageContext extends string>(
             filename: file.filename,
             contentType,
             size: file.size,
-            usageContext: config.usageContext,
             isPublic: config.isPublic,
             // Raw declared field values; the storage adapter resolves its own
             // object metadata from these (the core no longer pre-resolves it).
@@ -161,25 +160,27 @@ export const createCore = <TFileUsageContext extends string>(
     );
 
     await databaseAdapter.createFiles({
-      files: preparedFiles.map(({ file, contentType, id, key, publicUrl }) => ({
-        id,
-        key,
-        publicUrl,
-        filename: file.filename,
-        size: file.size,
-        contentType,
-        batchId,
-        // oxlint-disable-next-line @typescript-eslint/no-explicit-any
-        uploadSessionData: uploadSessionDataParse.data as any,
-        usageContext: config.usageContext,
-        isPublic: config.isPublic,
-        stored: false,
-        createdAt,
-        // Declared custom columns ride along structurally; the adapter passes
-        // them through (the persisted schema must declare them). Already filtered
-        // to declared keys, so this can't overwrite a library-owned column above.
-        ...safeFieldValues,
-      })),
+      files: preparedFiles.map(
+        ({ file, contentType, id, key, publicUrl }) =>
+          ({
+            id,
+            key,
+            publicUrl,
+            filename: file.filename,
+            size: file.size,
+            contentType,
+            batchId,
+            // oxlint-disable-next-line @typescript-eslint/no-explicit-any
+            uploadSessionData: uploadSessionDataParse.data as any,
+            isPublic: config.isPublic,
+            stored: false,
+            createdAt,
+            // Declared custom columns ride along structurally; the adapter passes
+            // them through (the persisted schema must declare them). Already filtered
+            // to declared keys, so this can't overwrite a library-owned column above.
+            ...safeFieldValues,
+          }) as DatabaseFile<TFields>,
+      ),
     });
 
     return {

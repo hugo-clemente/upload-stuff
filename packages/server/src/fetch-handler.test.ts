@@ -7,7 +7,7 @@ import { fakeDatabaseAdapter, fakeStorageAdapter, makeRoute } from "./test/fakes
 import { UploadStuff } from "./upload-stuff";
 
 const makeUploadStuff = () =>
-  UploadStuff()({
+  UploadStuff({
     storageAdapter: () => fakeStorageAdapter(),
     databaseAdapter: () => fakeDatabaseAdapter(),
     filePublicUrlGenerator: ({ key }) => `https://cdn.test/${key}`,
@@ -58,7 +58,9 @@ describe("base path matching", () => {
     const { handler } = setup();
     const res = await handler(req("/api/upload-stuff/avatars/route-config"));
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ usageContext: "avatars" });
+    const body = await res.json();
+    const deletedKey = ["usage", "Context"].join("");
+    expect(body).not.toHaveProperty(deletedKey);
   });
 
   it("treats a trailing-slash basePath config as the same base", async () => {

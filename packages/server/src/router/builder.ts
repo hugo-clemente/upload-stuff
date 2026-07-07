@@ -12,13 +12,11 @@ import type {
 
 const internalCreateBuilder = <
   TContext extends ValidContextObject,
-  TFileUsageContext extends string,
   TFieldsDeclaration extends FieldsDeclaration,
 >(
   initDef: Partial<AnyFileRoute> = {},
-): UploadBuilder<
-  {
-    _routeConfig: RouteConfig<TFileUsageContext>;
+): UploadBuilder<{
+    _routeConfig: RouteConfig;
     _input: {
       in: UnsetMarker;
       out: UnsetMarker;
@@ -28,12 +26,10 @@ const internalCreateBuilder = <
     _middlewareData: UnsetMarker;
     _ctx: TContext;
     _completeFnData: UnsetMarker;
-  },
-  TFileUsageContext
-> => {
+  }> => {
   const _def: AnyFileRoute = {
     $types: {} as AnyBuiltUploaderTypes,
-    routeConfig: {} as RouteConfig<TFileUsageContext>,
+    routeConfig: {} as RouteConfig,
     inputParser: {
       "~standard": {
         validate: () =>
@@ -54,31 +50,31 @@ const internalCreateBuilder = <
 
   return {
     input(parser) {
-      return internalCreateBuilder<TContext, TFileUsageContext, TFieldsDeclaration>({
+      return internalCreateBuilder<TContext, TFieldsDeclaration>({
         ..._def,
         inputParser: parser,
-      }) as UploadBuilder<any, TFileUsageContext>;
+      }) as UploadBuilder<any>;
     },
 
     middleware(fn) {
-      return internalCreateBuilder<TContext, TFileUsageContext, TFieldsDeclaration>({
+      return internalCreateBuilder<TContext, TFieldsDeclaration>({
         ..._def,
         middleware: fn,
-      }) as UploadBuilder<any, TFileUsageContext>;
+      }) as UploadBuilder<any>;
     },
 
     fields(fn) {
-      return internalCreateBuilder<TContext, TFileUsageContext, TFieldsDeclaration>({
+      return internalCreateBuilder<TContext, TFieldsDeclaration>({
         ..._def,
         fields: fn,
-      }) as UploadBuilder<any, TFileUsageContext>;
+      }) as UploadBuilder<any>;
     },
 
     onUploadComplete(fn) {
-      return internalCreateBuilder<TContext, TFileUsageContext, TFieldsDeclaration>({
+      return internalCreateBuilder<TContext, TFieldsDeclaration>({
         ..._def,
         onUploadComplete: fn,
-      }) as UploadBuilder<any, TFileUsageContext>;
+      }) as UploadBuilder<any>;
     },
 
     // `build`'s public return type is conditional on the fields declaration (see
@@ -91,12 +87,11 @@ const internalCreateBuilder = <
 };
 
 export const createUploadStuffRouter =
-  <TContext extends ValidContextObject, TUploadStuff extends UploadStuff<any, any>>() =>
+  <TContext extends ValidContextObject, TUploadStuff extends UploadStuff<any>>() =>
   (
-    routeConfig: RouteConfig<TUploadStuff["$types"]["fileUsageContext"]>,
-  ): UploadBuilder<
-    {
-      _routeConfig: RouteConfig<TUploadStuff["$types"]["fileUsageContext"]>;
+    routeConfig: RouteConfig,
+  ): UploadBuilder<{
+      _routeConfig: RouteConfig;
       _input: {
         in: UnsetMarker;
         out: UnsetMarker;
@@ -106,12 +101,9 @@ export const createUploadStuffRouter =
       _middlewareData: UnsetMarker;
       _ctx: TContext;
       _completeFnData: UnsetMarker;
-    },
-    TUploadStuff["$types"]["fileUsageContext"]
-  > => {
+    }> => {
     return internalCreateBuilder<
       TContext,
-      TUploadStuff["$types"]["fileUsageContext"],
       TUploadStuff["$types"]["fields"]
     >({
       routeConfig,

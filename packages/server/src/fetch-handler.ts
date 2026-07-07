@@ -19,11 +19,10 @@ export interface UploadStuffHTTPHandlerConfig {
 
 export type CreateUploadStuffHandlerOptions<
   TContext extends ValidContextObject,
-  TFileUsageContext extends string,
   TFields extends FieldsDeclaration = Record<never, never>,
 > = {
-  fileRouter: UploadStuffRouterWithContext<TContext, TFileUsageContext>;
-  uploadStuff: UploadStuff<TFileUsageContext, TFields>;
+  fileRouter: UploadStuffRouterWithContext<TContext>;
+  uploadStuff: UploadStuff<TFields>;
   config?: Partial<UploadStuffHTTPHandlerConfig>;
   createContext: (opts: { headers: Headers }) => Promise<TContext>;
 };
@@ -58,14 +57,13 @@ const readJson = async (request: Request): Promise<{ ok: true; body: unknown } |
 
 export const toFetchHandler = <
   TContext extends ValidContextObject,
-  TFileUsageContext extends string,
   TFields extends FieldsDeclaration = Record<never, never>,
 >({
   fileRouter,
   uploadStuff,
   config,
   createContext,
-}: CreateUploadStuffHandlerOptions<TContext, TFileUsageContext, TFields>) => {
+}: CreateUploadStuffHandlerOptions<TContext, TFields>) => {
   const rawBase = config?.basePath ?? DEFAULT_BASE_PATH;
   // "/api/upload-stuff" and "/api/upload-stuff/" are the same base; "/" stays "/".
   const basePath = rawBase.length > 1 && rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;

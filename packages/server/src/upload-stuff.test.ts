@@ -14,12 +14,12 @@ const fakeStorageAdapter = (): StorageAdapter => ({
   batchDeleteFiles: async () => {},
 });
 
-const fakeDatabaseAdapter = (): DatabaseAdapter<string, any> => ({
+const fakeDatabaseAdapter = (): DatabaseAdapter<any> => ({
   createFiles: async () => {},
   findFilesByBatchId: async () => [],
   findFilesToCleanUp: async () => [],
   updateFilesToStored: async () => ({ updatedCount: 0 }),
-  updateFile: async ({ file }) => file as DatabaseFile<string, any>,
+  updateFile: async ({ file }) => file as DatabaseFile<any>,
   deleteFiles: async () => {},
 });
 
@@ -32,7 +32,7 @@ const baseConfig = {
 describe("UploadStuff reserved field names (#1)", () => {
   it("throws when a custom field reuses a reserved column name", () => {
     expect(() =>
-      UploadStuff()({
+      UploadStuff({
         ...baseConfig,
         // `as any` bypasses the type-level guard to exercise the runtime guard,
         // standing in for a plain-JS caller.
@@ -43,7 +43,7 @@ describe("UploadStuff reserved field names (#1)", () => {
 
   it("accepts non-reserved custom field names", () => {
     expect(() =>
-      UploadStuff()({
+      UploadStuff({
         ...baseConfig,
         fields: { entityId: { type: "string" } },
       }),
@@ -53,13 +53,13 @@ describe("UploadStuff reserved field names (#1)", () => {
 
 describe("uploadWindowSeconds validation", () => {
   it("accepts the boundaries 1 and 604800 and the default", () => {
-    expect(() => UploadStuff()({ ...baseConfig })).not.toThrow();
-    expect(() => UploadStuff()({ ...baseConfig, uploadWindowSeconds: 1 })).not.toThrow();
-    expect(() => UploadStuff()({ ...baseConfig, uploadWindowSeconds: 604800 })).not.toThrow();
+    expect(() => UploadStuff({ ...baseConfig })).not.toThrow();
+    expect(() => UploadStuff({ ...baseConfig, uploadWindowSeconds: 1 })).not.toThrow();
+    expect(() => UploadStuff({ ...baseConfig, uploadWindowSeconds: 604800 })).not.toThrow();
   });
   it("rejects 0, negative, non-integer, NaN, and >604800", () => {
     for (const bad of [0, -1, 1.5, Number.NaN, 604801]) {
-      expect(() => UploadStuff()({ ...baseConfig, uploadWindowSeconds: bad })).toThrow(
+      expect(() => UploadStuff({ ...baseConfig, uploadWindowSeconds: bad })).toThrow(
         /uploadWindowSeconds/,
       );
     }
@@ -68,13 +68,13 @@ describe("uploadWindowSeconds validation", () => {
 
 describe("defaultMaxFileCount / defaultMaxFileSize validation", () => {
   it("defaults to 20 and 4MB", () => {
-    const instance = UploadStuff()(baseConfig);
+    const instance = UploadStuff(baseConfig);
     expect(instance.__defaultMaxFileCount).toBe(20);
     expect(instance.__defaultMaxFileSize).toBe("4MB");
   });
 
   it("accepts explicit values", () => {
-    const instance = UploadStuff()({
+    const instance = UploadStuff({
       ...baseConfig,
       defaultMaxFileCount: 5,
       defaultMaxFileSize: "1MB",
@@ -84,13 +84,13 @@ describe("defaultMaxFileCount / defaultMaxFileSize validation", () => {
   });
 
   it("rejects invalid values", () => {
-    expect(() => UploadStuff()({ ...baseConfig, defaultMaxFileCount: -1 })).toThrow(
+    expect(() => UploadStuff({ ...baseConfig, defaultMaxFileCount: -1 })).toThrow(
       /defaultMaxFileCount/,
     );
-    expect(() => UploadStuff()({ ...baseConfig, defaultMaxFileCount: 1.5 })).toThrow(
+    expect(() => UploadStuff({ ...baseConfig, defaultMaxFileCount: 1.5 })).toThrow(
       /defaultMaxFileCount/,
     );
-    expect(() => UploadStuff()({ ...baseConfig, defaultMaxFileSize: "0B" })).toThrow(
+    expect(() => UploadStuff({ ...baseConfig, defaultMaxFileSize: "0B" })).toThrow(
       /defaultMaxFileSize/,
     );
   });
@@ -99,14 +99,14 @@ describe("defaultMaxFileCount / defaultMaxFileSize validation", () => {
 describe("serverUtils.cleanUpFiles threshold", () => {
   it("uses uploadWindowSeconds as the createdAt threshold", async () => {
     let threshold: Date | undefined;
-    const databaseAdapter: DatabaseAdapter<string, any> = {
+    const databaseAdapter: DatabaseAdapter<any> = {
       ...fakeDatabaseAdapter(),
       findFilesToCleanUp: async (p) => {
         threshold = p.createdAtThreshold;
         return [];
       },
     };
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       ...baseConfig,
       storageAdapter: () => fakeStorageAdapter(),
       databaseAdapter: () => databaseAdapter,
@@ -130,7 +130,7 @@ describe("serverUtils.uploadFile forwards row data to the storage adapter (#6)",
       },
     };
 
-    const uploadStuff = UploadStuff()({
+    const uploadStuff = UploadStuff({
       ...baseConfig,
       storageAdapter: () => storageAdapter,
       filePublicUrlGenerator: ({ key }: { key: string }) => `https://cdn.test/${key}`,
@@ -145,7 +145,6 @@ describe("serverUtils.uploadFile forwards row data to the storage adapter (#6)",
         filename: "a.png",
         contentType: "image/png",
         size: 10,
-        usageContext: "avatar",
         isPublic: false,
         entityId: "e1",
         count: 5,
@@ -158,5 +157,37 @@ describe("serverUtils.uploadFile forwards row data to the storage adapter (#6)",
     // Only the declared custom fields are forwarded (filtered to the declaration);
     // the storage adapter resolves its own object metadata from these.
     expect(uploads[0]!.fields).toEqual({ entityId: "e1", count: 5 });
+    const deletedKey = ["usage", "Context"].join("");
+    expect(uploads[0]).not.toHaveProperty(deletedKey);
+  });
+
+  it("calls custom id and key generators without the deleted column", async () => {
+    const fileIdCalls: unknown[] = [];
+    const fileKeyCalls: unknown[] = [];
+
+    const uploadStuff = UploadStuff({
+      ...baseConfig,
+      fileIdGenerator: async (params) => {
+        fileIdCalls.push(params);
+        return "file-id";
+      },
+      fileKeyGenerator: async (params) => {
+        fileKeyCalls.push(params);
+        return `${params.fileId}-${params.filename}`;
+      },
+    });
+
+    await uploadStuff.serverUtils.uploadFile({
+      data: {
+        filename: "a.png",
+        contentType: "image/png",
+        size: 10,
+        isPublic: false,
+      },
+      content: "data",
+    });
+
+    expect(fileIdCalls).toEqual([{ filename: "a.png" }]);
+    expect(fileKeyCalls).toEqual([{ fileId: "file-id", filename: "a.png" }]);
   });
 });
