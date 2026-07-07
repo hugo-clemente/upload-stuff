@@ -361,7 +361,7 @@ await uploadStuff.serverUtils.deleteFiles([fileId]);
 
 | Field          | Type                                                                | Description                                |
 | -------------- | ------------------------------------------------------------------- | ------------------------------------------ |
-| `files`        | `FilesConfigInput`                                                  | Accepted MIME types and per-type limits    |
+| `files`        | `FilesConfig`                                                       | Accepted MIME types and per-type limits    |
 | `maxFileSize`  | `FileSize` (e.g. `"4MB"`)                                           | Maximum file size per file                 |
 | `maxFileCount` | `number` (optional)                                                 | Maximum number of files per batch          |
 | `isPublic`     | `boolean`                                                           | Whether the S3 object ACL is `public-read` |
