@@ -6,6 +6,11 @@ export type CustomMimeLiteral = string & { readonly __uploadStuffCustomMime: "cu
 type KnownFileTypeKey = "blob" | MimeLiteral | MimeWildcard;
 export type FileTypeKey = KnownFileTypeKey | CustomMimeLiteral;
 
+/**
+ * Per-type constraints. An unset `maxFileSize` falls back to the route/instance
+ * default; an unset `maxFileCount` applies no per-type limit (only the route's
+ * total `maxFileCount` caps the batch).
+ */
 export type PerTypeConfig = {
   maxFileSize?: FileSize;
   maxFileCount?: number;
@@ -13,6 +18,11 @@ export type PerTypeConfig = {
 
 export type FilesRecord = Partial<Record<KnownFileTypeKey, PerTypeConfig>> &
   Partial<Record<CustomMimeLiteral, PerTypeConfig>>;
+/**
+ * Accepted file types on a {@link RouteConfig}: either a list of keys
+ * (`["image/*", "application/pdf"]`) or a map of key to {@link PerTypeConfig}.
+ * Keys are a MIME type, a `type/*` wildcard, or `"blob"` (any type).
+ */
 export type FilesConfig = readonly FileTypeKey[] | FilesRecord;
 
 export type NormalizedFileTypeKey = MimeLiteral | MimeWildcard | CustomMimeLiteral | "blob";
@@ -25,6 +35,7 @@ export type NormalizedFilesConfig = Partial<
 > &
   Partial<Record<CustomMimeLiteral, NormalizedPerTypeConfig>>;
 
+/** A {@link RouteConfig} with all defaults resolved — the shape the server serves and the client matches against. */
 export type NormalizedRouteConfig = {
   isPublic: boolean;
   files: NormalizedFilesConfig;
@@ -70,6 +81,13 @@ export const normalizeContentType = (contentType: string | undefined | null): st
   return canonical;
 };
 
+/**
+ * Brand an arbitrary `type/subtype` string as a valid {@link FilesConfig} key —
+ * the escape hatch for MIME types not in the built-in literal union.
+ *
+ * @throws if `value` isn't a `type/subtype` (no parameters).
+ * @example files: [customMime("application/vnd.custom")]
+ */
 export const customMime = (value: string): CustomMimeLiteral => {
   const normalized = value.trim().toLowerCase();
   if (!MIME_SYNTAX.test(normalized)) {
@@ -189,6 +207,10 @@ export const matchFileType = (
   return undefined;
 };
 
+/**
+ * Build an `<input accept>` string from a route config, or `undefined` when the
+ * route accepts `blob` (any type) and so shouldn't constrain the file picker.
+ */
 export const getAcceptFromRouteConfig = (config: NormalizedRouteConfig): string | undefined => {
   const keys = Object.keys(config.files);
   if (keys.includes("blob")) return undefined;

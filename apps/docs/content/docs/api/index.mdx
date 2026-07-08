@@ -26,7 +26,7 @@ type), so it is documented by hand:
 | --- | --- |
 | `.input(schema)` | Attach a [Standard Schema](https://standardschema.dev)-compatible input parser (e.g. Zod). |
 | `.middleware(fn)` | Run server-side logic; the returned data is forwarded to `onUploadComplete`. |
-| `.metadata(fn)` | Attach `entityId` metadata to the upload. |
+| `.fields(fn)` | Resolve values for the instance's declared custom `fields`; required when a field is declared `required`. |
 | `.onUploadComplete(fn)` | Called after the S3 upload is verified; the return value is sent back to the client. |
 | `.build()` | Finalize and return the `FileRoute`. |
 
@@ -34,9 +34,9 @@ type), so it is documented by hand:
 
 ### CreateUploadStuffClientOptions
 
-Passed to `createUploadStuffReactHelpers`.
+Passed to `createUploadStuffClient`.
 
-<AutoTypeTable path="../../packages/client/src/impl.ts" name="CreateUploadStuffClientOptions" />
+<AutoTypeTable path="../../packages/client/src/types.ts" name="CreateUploadStuffClientOptions" />
 
 ### Hook options
 
@@ -45,7 +45,6 @@ The second argument to `useUploadStuff`. All fields are optional.
 | Option | Type | Description |
 | --- | --- | --- |
 | `headers` | `HeadersInit` | Extra headers sent with the init/complete requests. |
-| `signal` | `AbortSignal` | Abort the in-flight upload. |
 | `onBeforeUploadBegin` | `(params) => File[] \| Promise<File[]>` | Transform the files before upload (e.g. client-side compression). |
 | `onUploadBegin` | `(params: { file: string }) => void` | Fires when a file starts uploading. |
 | `onUploadProgress` | `(percent: number) => void` | Global upload progress. |
@@ -58,7 +57,7 @@ The second argument to `useUploadStuff`. All fields are optional.
 
 What `useUploadStuff` returns.
 
-<AutoTypeTable path="../../packages/client/src/impl.ts" name="UseUploadStuffReturn" />
+<AutoTypeTable path="../../packages/react/src/index.ts" name="UseUploadStuffReturn" />
 
 ## Adapters
 

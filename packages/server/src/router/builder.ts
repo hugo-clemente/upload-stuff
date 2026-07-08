@@ -86,6 +86,23 @@ const internalCreateBuilder = <
   };
 };
 
+/**
+ * Create a route factory bound to an instance's fields and a request-context
+ * type. Call the returned function with a {@link RouteConfig} to get a fluent
+ * builder, then chain `.middleware`/`.input`/`.fields`/`.onUploadComplete` and
+ * finish with `.build()`. Collect the built routes into a `fileRouter` map.
+ *
+ * @typeParam TUploadStuff - your `UploadStuff` instance type (`typeof uploadStuff`)
+ * @typeParam TContext - the context produced by the handler's `createContext`
+ * @example
+ * const route = createUploadStuffRouter<typeof uploadStuff, Ctx>();
+ * export const fileRouter = {
+ *   avatar: route({ isPublic: true, files: ["image/*"] })
+ *     .middleware(({ ctx }) => ({ userId: ctx.userId }))
+ *     .onUploadComplete(({ files }) => ({ count: files.length }))
+ *     .build(),
+ * };
+ */
 export const createUploadStuffRouter =
   <
     TUploadStuff extends UploadStuff<any>,

@@ -10,10 +10,23 @@ import type { InitUploadFileData, ToUploadFileData, UploadedFileData } from "./s
 export type UnsetMarker = "unsetMarker" & { __brand: "unsetMarker" };
 export type ErrorMessage<TError extends string> = TError;
 
+/**
+ * Per-route upload rules, passed to `createUploadStuffRouter()(config)`.
+ *
+ * @example
+ * createUploadStuffRouter()({
+ *   isPublic: true,
+ *   files: { "image/*": { maxFileSize: "8MB", maxFileCount: 4 } },
+ * })
+ */
 export type RouteConfig = {
+  /** Whether stored objects are world-readable (`public-read`) vs private. */
   isPublic: boolean;
+  /** Accepted file types, either a list of keys or per-type constraints. */
   files: FilesConfig;
+  /** Fallback size cap for types that don't set their own. @default "4MB" */
   maxFileSize?: FileSize;
+  /** Cap on total files per upload. @default 20 (instance `defaultMaxFileCount`) */
   maxFileCount?: number;
 };
 export type AnyRouteConfig = RouteConfig;
@@ -117,7 +130,18 @@ type AnyParams = {
   _completeFnData: any;
 };
 
+/**
+ * Fluent route builder returned by `createUploadStuffRouter()(config)`. Each
+ * method returns a new builder; call `.build()` last. All methods are optional
+ * except `.build()` — and `.fields()`, which is required when the instance
+ * declares a `required` custom field.
+ */
 export interface UploadBuilder<TParams extends AnyParams> {
+  /**
+   * Attach a Standard Schema parser for the per-upload `input`. The parsed
+   * value is passed to `middleware`/`fields`/`onUploadComplete` and required at
+   * the call site. Can be set once.
+   */
   input: <TIn extends Json, TOut>(
     parser: TParams["_input"]["in"] extends UnsetMarker
       ? Standard.StandardSchemaV1<TIn, TOut>
@@ -135,6 +159,12 @@ export interface UploadBuilder<TParams extends AnyParams> {
     _completeFnData: TParams["_completeFnData"];
   }>;
 
+  /**
+   * Run auth/validation before the upload is authorized. Receives the request
+   * `ctx`, `input`, and file metadata; throw (e.g. `UploadStuffError`) to reject.
+   * Its return value flows to `fields`/`onUploadComplete` as `middlewareData`.
+   * Can be set once.
+   */
   middleware: <TOut extends ValidMiddlewareObject>(
     fn: TParams["_middlewareData"] extends UnsetMarker
       ? MiddlewareFn<TParams["_ctx"], TParams["_input"]["out"], TOut>
@@ -149,6 +179,11 @@ export interface UploadBuilder<TParams extends AnyParams> {
     _completeFnData: TParams["_completeFnData"];
   }>;
 
+  /**
+   * Resolve values for the instance's declared custom `fields`, persisted on
+   * each file row. Required when the instance declares a `required` field.
+   * Can be set once.
+   */
   fields: (
     fn: TParams["_fields"] extends UnsetMarker
       ? FieldsFn<
@@ -168,6 +203,11 @@ export interface UploadBuilder<TParams extends AnyParams> {
     _completeFnData: TParams["_completeFnData"];
   }>;
 
+  /**
+   * Run server-side after every file is stored and verified. Its return value
+   * becomes the client's `serverData`. Runs exactly once per batch (skipped on
+   * idempotent re-completion). Can be set once.
+   */
   onUploadComplete: <TOut extends Json | void>(
     fn: TParams["_completeFnData"] extends UnsetMarker
       ? UploadCompleteFn<TParams["_ctx"], TParams["_input"]["out"], TParams["_middlewareData"], TOut>
@@ -195,6 +235,7 @@ export interface UploadBuilder<TParams extends AnyParams> {
     : BuiltFileRoute<TParams>;
 }
 
+/** A map of endpoint name to built {@link FileRoute} — the shape you pass as `fileRouter`. */
 export type UploadStuffRouter = Record<string, AnyFileRoute>;
 
 export type UploadStuffRouterWithContext<TContext extends ValidContextObject> = Record<
@@ -207,18 +248,22 @@ export type UploadStuffRouterWithContext<TContext extends ValidContextObject> = 
   }>
 >;
 
+/** Response of `init-upload`: presigned targets plus the batch token used to complete. */
 export type InitUploadResult = {
   batchToken: string;
   files: Array<ToUploadFileData>;
 };
 
+/** Response of `complete-upload`: the stored files and the route's `onUploadComplete` return value. */
 export type CompleteUploadResult<TServerData extends Json = Json> = {
   files: Array<UploadedFileData>;
   serverData: TServerData;
 };
 
+/** The route's `input` type, or `undefined` when it declares no `.input()`. */
 export type inferRouteInput<TRoute extends AnyFileRoute> =
   TRoute["$types"]["input"] extends UnsetMarker ? undefined : TRoute["$types"]["input"];
+/** Static type of the client's `serverData`: the `Awaited` return of the route's `onUploadComplete`, or `null` when it declares none. */
 export type inferRouteServerData<TRoute extends AnyFileRoute> = Awaited<
   TRoute["$types"]["output"] extends UnsetMarker ? null : TRoute["$types"]["output"]
 >;

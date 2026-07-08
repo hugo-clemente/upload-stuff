@@ -14,6 +14,7 @@ import type {
 } from "@upload-stuff/client";
 import { getAcceptFromRouteConfig, mergeHeaders, resolveEndpoint } from "@upload-stuff/client";
 
+/** Options for {@link useUploadStuff}: the upload lifecycle callbacks plus hook-level `headers`. */
 export type UseUploadStuffOptions<TRoute extends AnyFileRoute> = UploadCallbacks<TRoute> & {
   /**
    * Sent on init and complete requests. Merged under per-call
@@ -22,11 +23,15 @@ export type UseUploadStuffOptions<TRoute extends AnyFileRoute> = UploadCallbacks
   headers?: HeadersInit;
 };
 
+/** Per-call options for `startUpload`. */
 export type StartUploadFnOptions = {
+  /** Aborts this run's byte transfer. */
   signal?: AbortSignal;
+  /** Extra headers for this run; win over the hook-level `headers`. */
   headers?: HeadersInit;
 };
 
+/** Starts an upload: `(files, input?, options?)`, where `input` is required and typed when the route declares `.input()`. */
 export type StartUploadFn<TRoute extends AnyFileRoute> =
   // Tuple-wrapped to opt out of TS's "conditional type over a bare `any`
   // check type resolves to the union of both branches" behavior. Without
@@ -46,15 +51,13 @@ export type StartUploadFn<TRoute extends AnyFileRoute> =
         options?: StartUploadFnOptions,
       ) => Promise<CompleteUploadResult<inferRouteServerData<TRoute>>>;
 
+/** State and actions returned by {@link useUploadStuff}. */
 export type UseUploadStuffReturn<TRoute extends AnyFileRoute> = {
+  /** Start an upload for this endpoint. */
   startUpload: StartUploadFn<TRoute>;
-  /**
-   * Is the hook ready to be used?
-   */
+  /** Whether the route config is still loading. */
   isLoading: boolean;
-  /**
-   * Are files currently being uploaded?
-   */
+  /** Whether files are currently being uploaded. */
   isUploading: boolean;
   /**
    * Whole-run progress percent (0–100), throttled by
@@ -65,13 +68,29 @@ export type UseUploadStuffReturn<TRoute extends AnyFileRoute> = {
    * Abort the in-flight upload. No-op when idle.
    */
   abort: () => void;
+  /** The endpoint's resolved route config, once loaded. */
   routeConfig?: NormalizedRouteConfig;
+  /** An `<input accept>` string derived from `routeConfig`, or `undefined` for `blob` routes. */
   accept?: string;
 };
 
+/**
+ * Bind React hooks to an upload client. Returns `{ useUploadStuff, useRouteConfig }`
+ * typed to your `fileRouter`, so endpoints, `input`, and `serverData` are inferred.
+ * Call once and export the hooks.
+ *
+ * @example
+ * const client = createUploadStuffClient<typeof fileRouter>({ baseURL });
+ * export const { useUploadStuff } = createUploadStuffReactHelpers(client);
+ */
 export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRouter>(
   client: UploadStuffClient<TFileRouter>,
 ) => {
+  /**
+   * Load an endpoint's route config as reactive state (`{ data, error, isLoading,
+   * refetch }`). Switching endpoints re-loads; a failed refresh keeps serving the
+   * last good config.
+   */
   const useRouteConfig = <TEndpoint extends keyof TFileRouter>(endpoint: TEndpoint) => {
     type State = {
       endpoint: TEndpoint;
@@ -121,6 +140,20 @@ export const createUploadStuffReactHelpers = <TFileRouter extends UploadStuffRou
     return { data: state.data, error: state.error, isLoading: state.isLoading, refetch };
   };
 
+  /**
+   * Hook for one upload endpoint. Returns `startUpload` plus reactive
+   * `isUploading`/`progress`/`abort` and the route's `routeConfig`/`accept`.
+   * Switching `endpoint` resets the state and orphans any in-flight run.
+   *
+   * @param endpoint - target route name or `(r) => r.name` selector
+   * @param opts - upload lifecycle callbacks plus hook-level `headers` (per-call
+   *   `signal`/`headers` go on `startUpload`)
+   *
+   * @example
+   * const { startUpload, isUploading, progress } = useUploadStuff("avatar", {
+   *   onClientUploadComplete: (res) => console.log(res.serverData),
+   * });
+   */
   const useUploadStuff = <
     TEndpoint extends keyof TFileRouter,
     TRoute extends TFileRouter[TEndpoint],

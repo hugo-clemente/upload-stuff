@@ -87,6 +87,7 @@ export type ValidateFieldsDeclaration<TFields extends FieldsDeclaration> = {
     : TFields[K];
 };
 
+/** A persisted file row: the library-owned columns plus the instance's typed custom `fields`. */
 export type DatabaseFile<TFields extends FieldsDeclaration = Record<never, never>> = {
   id: string;
   key: string;
@@ -108,24 +109,45 @@ export type DatabaseFile<TFields extends FieldsDeclaration = Record<never, never
   createdAt?: Date;
 } & InferFieldValues<TFields>;
 
+/**
+ * File-metadata store. Implement this to persist rows somewhere other than the
+ * shipped Prisma adapter. Methods that return full rows must round-trip every
+ * library-owned column of {@link DatabaseFile} — including `createdAt` (the
+ * completion window reads it back) and any declared custom `fields`
+ * (`findFilesToCleanUp` is the exception: it returns only `{ id, key }`).
+ */
 export type DatabaseAdapter<TFields extends FieldsDeclaration = Record<never, never>> = {
+  /** Insert the given rows (called at init with `stored: false`). */
   createFiles: (params: { files: DatabaseFile<TFields>[] }) => Promise<void>;
 
+  /** Return every row of a batch, in any order. Empty array if none. */
   findFilesByBatchId: (params: { batchId: string }) => Promise<DatabaseFile<TFields>[]>;
 
+  /** Return abandoned rows to reap: `stored: false` and `createdAt <= createdAtThreshold`. */
   findFilesToCleanUp: (params: {
     createdAtThreshold: Date;
   }) => Promise<{ id: string; key: string }[]>;
 
+  /**
+   * Atomically flip a batch's still-pending (`stored: false`) rows to stored.
+   * The `stored: false` guard is required: a concurrent/repeated completion must
+   * update 0 rows, and `updatedCount` reports how many it flipped.
+   */
   updateFilesToStored: (params: {
     batchId: string;
     storedAt: Date;
   }) => Promise<{ updatedCount: number }>;
 
+  /** Patch one row by `id` and return the full updated row. */
   updateFile: (params: {
     file: Partial<DatabaseFile<TFields>> & { id: string };
   }) => Promise<DatabaseFile<TFields>>;
 
+  /**
+   * Delete rows by id. Must call `deleteFromStorage` with their keys *before*
+   * removing the rows so a storage failure leaves the rows for a retry — deleting
+   * rows first would strand the objects as unreachable orphans.
+   */
   deleteFiles: (params: {
     fileIds: string[];
     deleteFromStorage: (fileKeys: string[]) => Promise<void>;
@@ -163,7 +185,19 @@ export type StorageObjectInfo = {
   fields: Record<string, unknown>;
 };
 
+/**
+ * Object-storage backend. Implement this to target a store other than the
+ * shipped S3 adapter. Methods should throw on unexpected failures (network,
+ * credentials, 5xx) so they surface as retryable 500s — reserve the typed
+ * "not found"/"invalid" results below for the client's own fault.
+ */
 export type StorageAdapter = {
+  /**
+   * Return a presigned URL the browser PUTs the file to directly, valid for
+   * `expiresInSeconds`. `requiredHeaders` are headers the client MUST replay on
+   * the PUT for the signature to match (e.g. signed `x-amz-meta-*`); omit when
+   * none beyond `Content-Type` are signed.
+   */
   generatePresignedUpload: (params: StorageObjectInfo & { expiresInSeconds: number }) => Promise<{
     uploadUrl: string;
     /**
@@ -176,12 +210,22 @@ export type StorageAdapter = {
     requiredHeaders?: Record<string, string>;
   }>;
 
+  /**
+   * Upload `content` server-side (bypassing the presigned flow), writing the
+   * same object metadata as {@link StorageAdapter.generatePresignedUpload}.
+   * Returns the stored object key.
+   */
   uploadFile: (
     params: StorageObjectInfo & {
       content: FileUploadContent;
     },
   ) => Promise<{ key: string }>;
 
+  /**
+   * Check the stored object matches what was promised at init. `exists: false`
+   * means the client never uploaded; `isValid: false` with `error` means a size/
+   * content-type/etag mismatch. Both are client faults, not throws.
+   */
   verifyUpload: (params: {
     key: string;
     expectedSize: number;
@@ -196,8 +240,17 @@ export type StorageAdapter = {
     lastModified?: Date;
   }>;
 
+  /**
+   * Delete one object. Idempotent by default; when `throwIfNotFound` is set, a
+   * missing key must throw.
+   */
   deleteFile: (params: { key: string; throwIfNotFound?: boolean }) => Promise<void>;
 
+  /**
+   * Delete many objects. An empty list is a no-op. When `throwIfError` is set,
+   * any per-object failure must throw (used by cleanup so the DB rows survive a
+   * partial storage failure); otherwise failures are logged and swallowed.
+   */
   batchDeleteFiles: (params: { fileKeys: string[]; throwIfError?: boolean }) => Promise<void>;
 };
 

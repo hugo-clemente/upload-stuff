@@ -2,6 +2,7 @@ export type RouteRegistry<T extends Record<string, unknown>> = {
   [K in keyof T]: K;
 };
 
+/** An endpoint, given as its name or a `(r) => r.name` selector (cmd+click-navigable). */
 export type EndpointArg<
   TFileRouter extends Record<string, unknown>,
   TEndpoint extends keyof TFileRouter,
