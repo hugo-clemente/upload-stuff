@@ -20,18 +20,19 @@ Hover the `// ^?` lines — those types are inferred, not declared. The
 ```ts twoslash
 import { UploadStuff, createUploadStuffRouter } from "@upload-stuff/server";
 import type {
-  StorageAdapter,
-  DatabaseAdapter,
+  StorageAdapterFactory,
+  DatabaseAdapterFactory,
   inferRouteServerData,
 } from "@upload-stuff/server";
 import { createUploadStuffClient } from "@upload-stuff/client";
 import { createUploadStuffReactHelpers } from "@upload-stuff/react";
 import { z } from "zod";
 
-// `declare const` stands in for your real S3 + database adapters, so this whole
+// `declare const` stands in for your real adapter factories — what
+// `s3Adapter(...)` and `prismaAdapter(...)` return — so this whole
 // sample type-checks with no runtime wiring.
-declare const storageAdapter: StorageAdapter;
-declare const databaseAdapter: DatabaseAdapter;
+declare const storageAdapter: StorageAdapterFactory;
+declare const databaseAdapter: DatabaseAdapterFactory;
 
 const uploadStuff = UploadStuff({
   storageAdapter,
@@ -91,12 +92,12 @@ at runtime become compile errors instead. These two fail to build:
 ```ts twoslash
 // @errors: 2339 2551
 import { UploadStuff, createUploadStuffRouter } from "@upload-stuff/server";
-import type { StorageAdapter, DatabaseAdapter } from "@upload-stuff/server";
+import type { StorageAdapterFactory, DatabaseAdapterFactory } from "@upload-stuff/server";
 import { createUploadStuffClient } from "@upload-stuff/client";
 import { createUploadStuffReactHelpers } from "@upload-stuff/react";
 
-declare const storageAdapter: StorageAdapter;
-declare const databaseAdapter: DatabaseAdapter;
+declare const storageAdapter: StorageAdapterFactory;
+declare const databaseAdapter: DatabaseAdapterFactory;
 
 const uploadStuff = UploadStuff({
   storageAdapter,

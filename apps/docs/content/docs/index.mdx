@@ -14,10 +14,10 @@ below is the real inferred type — hover `ServerData`:
 
 ```ts twoslash
 import { UploadStuff, createUploadStuffRouter } from "@upload-stuff/server";
-import type { StorageAdapter, DatabaseAdapter } from "@upload-stuff/server";
+import type { StorageAdapterFactory, DatabaseAdapterFactory } from "@upload-stuff/server";
 
-declare const storageAdapter: StorageAdapter;
-declare const databaseAdapter: DatabaseAdapter;
+declare const storageAdapter: StorageAdapterFactory;
+declare const databaseAdapter: DatabaseAdapterFactory;
 
 const uploadStuff = UploadStuff({
   storageAdapter,
