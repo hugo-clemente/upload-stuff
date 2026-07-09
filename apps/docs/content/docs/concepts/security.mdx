@@ -11,9 +11,9 @@ upload-stuff moves file bytes directly between the browser and your storage buck
 
 Five parties touch an upload: the **browser**, your **client code**, the **upload-stuff handler** on your server, your **database**, and your **storage bucket**.
 
-1. **Init** - `POST /:endpoint/init-upload`. The server validates the request shape, parses route input, validates file metadata against the route's `files` config, runs route middleware, creates pending database rows, and returns presigned `PUT` URLs plus a `batchToken`.
-2. **Upload** - the browser `PUT`s bytes straight to storage with the presigned URLs. Your server never sees the bytes. The bucket handles the signed request; upload-stuff still treats completion as untrusted until verification passes.
-3. **Complete** - `POST /:endpoint/complete-upload` with the `batchToken`. The server verifies each object through the storage adapter, marks rows stored, and runs your `onUploadComplete`.
+1. **Init** — `POST /:endpoint/init-upload`. The server validates the request shape, parses route input, validates file metadata against the route's `files` config, runs route middleware, creates pending database rows, and returns presigned `PUT` URLs plus a `batchToken`.
+2. **Upload** — the browser `PUT`s bytes straight to storage with the presigned URLs. Your server never sees the bytes. The bucket handles the signed request; upload-stuff still treats completion as untrusted until verification passes.
+3. **Complete** — `POST /:endpoint/complete-upload` with the `batchToken`. The server verifies each object through the storage adapter, marks rows stored, and runs your `onUploadComplete`.
 
 Client-side checks such as `accept` and preflight validation are UX. The server re-validates file count, size, and content type on init, and storage verification checks the stored object before completion succeeds.
 
@@ -35,7 +35,7 @@ Route middleware runs on **init only**. Completion is protected by the token, no
 - a pending batch older than the window is rejected at completion,
 - `serverUtils.cleanUpFiles()` uses it to find abandoned pending rows.
 
-One deliberate exception: a batch that already completed returns its result idempotently even after the window. Retrying a successful completion is safe and does not run `onUploadComplete` again.
+One deliberate exception: a batch that already completed can be completed again — even after the window — without re-running `onUploadComplete`. The retry gets the batch's files back, but not the original `onUploadComplete` result: `serverData` is `undefined` on replays, so clients must not depend on a retry returning the same server data.
 
 ## Storage verification
 
@@ -53,7 +53,7 @@ The `StorageAdapter` type exposes `verifyUpload`, but it cannot force what check
 
 Two consequences:
 
-- **Do not put secrets in route config.** It is metadata served by the docs-facing control plane.
+- **Do not put secrets in route config.** It is metadata served to any client that can reach the route-config endpoint.
 - **Endpoint names are enumerable.** A known endpoint's route-config action returns `200`; an unknown endpoint on the same action returns `400`. Do not encode secrets or sensitive business facts in endpoint names.
 
 ## `isPublic` is file visibility, not endpoint auth

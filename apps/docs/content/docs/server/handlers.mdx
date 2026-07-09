@@ -67,4 +67,4 @@ await app.listen(3000);
 
 ## Error contract
 
-Handled `UploadStuffError`s respond with status `400`, `401`, or `403` and the JSON envelope `{ "error": string }`. Unknown endpoints on known actions return `400`. Bad paths and wrong methods return `404`. In fetch and Next.js runtimes, non-`UploadStuffError` exceptions propagate to the host runtime; `toNodeHandler` forwards them to `next` when a framework provides it, otherwise it sends a `500` JSON response.
+Handled `UploadStuffError`s respond with status `400`, `401`, or `403` and the JSON envelope `{ "error": string }`. Unknown endpoints on known actions return `400`. Bad paths and wrong methods return `404` (`HEAD` is the exception — it is served through the `GET` path with an empty body). In fetch and Next.js runtimes, non-`UploadStuffError` exceptions propagate to the host runtime; `toNodeHandler` forwards them to `next` when a framework provides it, otherwise it sends a `500` JSON response.

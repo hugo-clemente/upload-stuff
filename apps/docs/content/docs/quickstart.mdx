@@ -72,10 +72,10 @@ export const uploadStuff = UploadStuff({
 ```ts
 // lib/file-router.ts
 import { z } from "zod";
-import { createUploadStuffRouter } from "@upload-stuff/server";
+import { createUploadStuffRouter, UploadStuffError } from "@upload-stuff/server";
 import { uploadStuff } from "./upload-stuff";
 
-type Context = { userId: string };
+type Context = { userId: string | null };
 
 const f = createUploadStuffRouter<typeof uploadStuff, Context>();
 
@@ -86,7 +86,11 @@ export const fileRouter = {
     maxFileSize: "4MB",
     maxFileCount: 1,
   })
-    .middleware(({ ctx }) => ({ userId: ctx.userId }))
+    .middleware(({ ctx }) => {
+      // Auth lives here, not in createContext — see the security model.
+      if (!ctx.userId) throw new UploadStuffError({ code: "FORBIDDEN", message: "Sign in to upload" });
+      return { userId: ctx.userId };
+    })
     // Runs on your server after S3 confirms the upload. Whatever you return
     // here is sent to the client's onClientUploadComplete, fully typed.
     .onUploadComplete(({ files, middlewareData }) => {
@@ -116,8 +120,10 @@ export const { GET, POST } = toNextJsHandler({
   fileRouter,
   config: {},
   createContext: async ({ headers }) => {
+    // Runs for every request, including the public route-config endpoint —
+    // resolve identity gently and never throw for anonymous users.
     const session = await auth(headers);
-    return { userId: session.userId };
+    return { userId: session?.userId ?? null };
   },
 });
 ```
