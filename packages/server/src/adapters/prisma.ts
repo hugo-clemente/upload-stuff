@@ -27,9 +27,14 @@ type PrismaClientLike = {
 };
 /* oxlint-enable @typescript-eslint/no-explicit-any */
 
-// Supplied to `UploadStuff(...)` as a factory: the library calls the returned
-// function with a type marker, which infers fields from the instance config.
-// Consumers never pass adapter generics by hand.
+/**
+ * Prisma {@link DatabaseAdapter} factory. Persists file rows through a `File`
+ * model on your Prisma client. Pass to `UploadStuff({ databaseAdapter })`. Uses
+ * only portable Prisma methods, so it works across every relational connector.
+ *
+ * @example
+ * prismaAdapter({ prisma })
+ */
 export const prismaAdapter =
   <
     TFields extends FieldsDeclaration = Record<never, never>,

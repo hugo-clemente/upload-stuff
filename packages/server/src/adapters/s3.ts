@@ -11,9 +11,17 @@ import type {
   StorageObjectInfo,
 } from "@upload-stuff/core";
 
-// Generic so it's supplied to `UploadStuff(...)` as a factory: the library calls
-// it with a type marker that infers the instance fields, which in turn types this
-// adapter's own `objectMetadata` resolver.
+/**
+ * S3 {@link StorageAdapter} factory. Uploads go browser → S3 via presigned PUTs.
+ * Pass to `UploadStuff({ storageAdapter })`; `objectMetadata` is typed against
+ * the instance's declared `fields`. Works with any S3-compatible store (R2, MinIO).
+ *
+ * @example
+ * s3Adapter({
+ *   config: { region: "us-east-1", credentials: { accessKeyId, secretAccessKey } },
+ *   bucket: "uploads",
+ * })
+ */
 export const s3Adapter =
   <
     TFields extends FieldsDeclaration = Record<never, never>,

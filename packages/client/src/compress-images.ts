@@ -21,6 +21,17 @@ export const compressImage = async (image: File, opts?: Options) => {
   return compressedImage;
 };
 
+/**
+ * Build an `onBeforeUploadBegin` callback that compresses raster images
+ * (JPEG/PNG/WebP) to fit the route's size cap before upload; other types pass
+ * through untouched.
+ *
+ * @param maxWidthOrHeight - optional pixel cap on the image's larger dimension;
+ *   images are additionally downscaled to fit the route's size limit
+ * @returns an `onBeforeUploadBegin` callback to pass in the upload options
+ * @example
+ * client.uploadFiles("photos", files, { onBeforeUploadBegin: preprocessImages(1920) });
+ */
 export const preprocessImages =
   (maxWidthOrHeight?: number): UploadCallbacks<AnyFileRoute>["onBeforeUploadBegin"] =>
   async ({ files, config }) => {

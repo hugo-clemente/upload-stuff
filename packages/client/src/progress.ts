@@ -1,5 +1,6 @@
 import { match } from "ts-pattern";
 
+/** How often progress is reported: `"all"` every event, `"fine"` per 1%, `"coarse"` per 10% (100% always fires). */
 export type ProgressGranularity = "all" | "fine" | "coarse";
 
 /**

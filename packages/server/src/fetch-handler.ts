@@ -14,16 +14,25 @@ import { fileRouteHandlers } from "./router/handler";
 import type { AnyUploadStuff, UploadStuff } from "./upload-stuff";
 
 export interface UploadStuffHTTPHandlerConfig {
+  /** URL prefix the routes are mounted under. @default "/api/upload-stuff" */
   basePath: string;
 }
 
+/** Shared options for every handler adapter (`toFetchHandler`/`toNextJsHandler`/`toNodeHandler`). */
 export type CreateUploadStuffHandlerOptions<
   TContext extends ValidContextObject,
   TFields extends FieldsDeclaration = Record<never, never>,
 > = {
+  /** Your `fileRouter` map of endpoint name to built route. */
   fileRouter: UploadStuffRouterWithContext<TContext>;
+  /** The instance created with `UploadStuff(...)`. */
   uploadStuff: UploadStuff<TFields>;
   config?: Partial<UploadStuffHTTPHandlerConfig>;
+  /**
+   * Build the per-request context passed to each route's `middleware`/`fields`.
+   * Runs on every base-path hit — including the public `route-config` GET — so it
+   * must return (not throw) for anonymous users; enforce auth in `middleware`.
+   */
   createContext: (opts: { headers: Headers }) => Promise<TContext>;
 };
 
@@ -55,6 +64,15 @@ const readJson = async (request: Request): Promise<{ ok: true; body: unknown } |
   }
 };
 
+/**
+ * Build a `(Request) => Promise<Response>` handler — the framework-agnostic base
+ * for any fetch-compatible runtime (Cloudflare Workers, Deno, Bun, Next Edge).
+ * Use `toNextJsHandler`/`toNodeHandler` for those platforms.
+ *
+ * @example
+ * const handler = toFetchHandler({ fileRouter, uploadStuff, createContext });
+ * export default { fetch: handler };
+ */
 export const toFetchHandler = <
   TContext extends ValidContextObject,
   TFields extends FieldsDeclaration = Record<never, never>,

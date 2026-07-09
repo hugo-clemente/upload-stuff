@@ -9,6 +9,7 @@ export const initUploadFileSchema = z.object({
   contentType: z.string().max(255),
   size: z.number().int().nonnegative(),
 });
+/** File metadata the client sends to start an upload: `filename`, `contentType`, `size`. */
 export type InitUploadFileData = z.infer<typeof initUploadFileSchema>;
 
 export const uploadedFileSchema = initUploadFileSchema.extend({
@@ -16,6 +17,7 @@ export const uploadedFileSchema = initUploadFileSchema.extend({
   key: z.string(),
   publicUrl: z.string().optional(),
 });
+/** A stored file as returned by complete-upload: init metadata plus `id`, `key`, `publicUrl`. */
 export type UploadedFileData = z.infer<typeof uploadedFileSchema>;
 
 export const toUploadFileSchema = uploadedFileSchema.extend({
@@ -27,6 +29,7 @@ export const toUploadFileSchema = uploadedFileSchema.extend({
    */
   uploadHeaders: z.record(z.string(), z.string()).optional(),
 });
+/** A file to upload as returned by init-upload: the stored row plus its presigned `uploadUrl` and `uploadHeaders`. */
 export type ToUploadFileData = z.infer<typeof toUploadFileSchema>;
 
 /** Request body for `POST /:endpoint/init-upload`. */
