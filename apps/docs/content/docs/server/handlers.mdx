@@ -1,0 +1,70 @@
+---
+title: "Handlers"
+description: "Mount upload-stuff in Next.js, NestJS, Express, or any fetch runtime."
+---
+
+upload-stuff's HTTP layer is a single fetch handler: `(request: Request) => Promise<Response>`. It serves three JSON actions under `basePath` (default `/api/upload-stuff`): `GET /:endpoint/route-config`, `POST /:endpoint/init-upload`, and `POST /:endpoint/complete-upload`. Every framework integration is a wrapper around that fetch handler. File bytes never pass through your server; they go straight from the browser to storage through presigned URLs.
+
+## Next.js (App Router)
+
+```ts
+// app/api/upload-stuff/[...uploadStuff]/route.ts
+import { toNextJsHandler } from "@upload-stuff/server/next";
+import { uploadStuff } from "@/lib/upload-stuff";
+import { fileRouter } from "@/lib/file-router";
+
+export const { GET, POST } = toNextJsHandler({
+  uploadStuff,
+  fileRouter,
+  createContext: async ({ headers }) => ({ userId: headers.get("x-user-id") ?? "anon" }),
+});
+```
+
+## Any fetch runtime
+
+```ts
+import { toFetchHandler } from "@upload-stuff/server";
+
+const handler = toFetchHandler({ uploadStuff, fileRouter, createContext });
+
+// Bun
+Bun.serve({ fetch: handler });
+
+// Cloudflare Workers
+export default { fetch: handler };
+```
+
+## Express
+
+```ts
+import express from "express";
+import { toNodeHandler } from "@upload-stuff/server/node";
+
+const app = express();
+
+app.use("/api/upload-stuff", toNodeHandler({ uploadStuff, fileRouter, createContext }));
+```
+
+Mount the middleware at the same path as `basePath` (default `/api/upload-stuff`). If `express.json()` already consumed the request stream, the Node wrapper reuses `req.body`; if the framework exposes `req.originalUrl`, the wrapper keeps the original mounted path for routing.
+
+## NestJS (Express platform)
+
+Register the handler as middleware in your bootstrap:
+
+```ts
+// main.ts
+import { NestFactory } from "@nestjs/core";
+import { toNodeHandler } from "@upload-stuff/server/node";
+import { AppModule } from "./app.module";
+
+const app = await NestFactory.create(AppModule);
+
+app.use("/api/upload-stuff", toNodeHandler({ uploadStuff, fileRouter, createContext }));
+await app.listen(3000);
+```
+
+`createContext` receives the request headers on every base-path request. Resolve identity there, then enforce authorization in route middleware.
+
+## Error contract
+
+Handled `UploadStuffError`s respond with status `400`, `401`, or `403` and the JSON envelope `{ "error": string }`. Unknown endpoints on known actions return `400`. Bad paths and wrong methods return `404`. In fetch and Next.js runtimes, non-`UploadStuffError` exceptions propagate to the host runtime; `toNodeHandler` forwards them to `next` when a framework provides it, otherwise it sends a `500` JSON response.
