@@ -35,6 +35,10 @@ The two server round-trips are **init** (authorize + presign) and **complete**
 (verify + persist). Files that are initialized but never completed are left as
 pending rows — see [Cleanup](#cleanup) below.
 
+Who may upload, and what "completed" proves, are security questions. The
+[security model](/docs/concepts/security) covers the trust boundaries, completion
+capability, upload window, and route-auth gotchas.
+
 ## Adapters
 
 upload-stuff talks to storage and to your database through two interfaces, so the
