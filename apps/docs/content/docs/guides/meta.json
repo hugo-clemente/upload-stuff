@@ -1,0 +1,3 @@
+{
+  "pages": ["custom-storage-adapter", "custom-database-adapter", "image-compression", "cleanup-job"]
+}

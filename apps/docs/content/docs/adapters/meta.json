@@ -1,0 +1,3 @@
+{
+  "pages": ["storage", "s3", "database", "prisma"]
+}
