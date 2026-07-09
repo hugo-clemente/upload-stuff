@@ -1,3 +1,23 @@
 {
-  "pages": ["index", "why", "type-safety", "quickstart", "concepts", "handlers", "api", "..."]
+  "pages": [
+    "---Get Started---",
+    "index",
+    "why",
+    "quickstart",
+    "type-safety",
+    "---Concepts---",
+    "...concepts",
+    "---Server---",
+    "...server",
+    "---Client---",
+    "...client",
+    "---Adapters---",
+    "...adapters",
+    "---Guides---",
+    "...guides",
+    "---Reference---",
+    "...reference",
+    "---AI Resources---",
+    "...ai"
+  ]
 }
