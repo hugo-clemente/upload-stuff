@@ -3,10 +3,89 @@ title: "React"
 description: "Use React bindings built on the framework-free client engine."
 ---
 
-import { Callout } from 'fumadocs-ui/components/callout';
+The React bindings are ergonomics over the [framework-free client](/docs/client/index). Create the helpers once, export the hooks from a client-side module, and keep the rest of your components focused on upload UI.
 
-This page will cover `createUploadStuffReactHelpers(client)`, `useUploadStuff`, `startUpload(files, input?, { signal, headers })`, `isUploading`, `isLoading`, `progress`, `abort`, `routeConfig`, `accept`, and `useRouteConfig` with `data`, `error`, `isLoading`, and `refetch`.
+## Setup
 
-<Callout type="warn" title="Page in progress">
-This page is planned but not yet written.
-</Callout>
+```tsx
+"use client";
+
+import { createUploadStuffClient } from "@upload-stuff/client";
+import { createUploadStuffReactHelpers } from "@upload-stuff/react";
+import type { FileRouter } from "./server/upload-router";
+
+const client = createUploadStuffClient<FileRouter>({
+  baseURL: "https://api.example.com",
+});
+
+export const { useUploadStuff, useRouteConfig } = createUploadStuffReactHelpers(client);
+```
+
+`createUploadStuffReactHelpers(client)` returns exactly `{ useRouteConfig, useUploadStuff }`. The client carries your server router type, so both hooks know your route names, inputs, and completion payloads.
+
+## useUploadStuff
+
+Use `useUploadStuff(endpoint, options?)` when a component owns an upload interaction. It returns `startUpload`, loading state, whole-run `progress`, `abort`, the resolved `routeConfig`, and an `accept` string you can pass straight to a file input.
+
+```tsx
+function AvatarUpload() {
+  const { startUpload, isLoading, isUploading, progress, abort, accept } = useUploadStuff((r) => r.avatar, {
+    onClientUploadComplete: (res) => console.log(res),
+    onUploadError: (err) => console.error(err.message),
+  });
+
+  return (
+    <>
+      <input
+        type="file"
+        accept={accept}
+        disabled={isLoading || isUploading}
+        onChange={(event) => {
+          const files = Array.from(event.currentTarget.files ?? []);
+          void startUpload(files, { albumId: "profile" });
+        }}
+      />
+      <button type="button" disabled={!isUploading} onClick={abort}>
+        Cancel
+      </button>
+      <span>{progress}%</span>
+    </>
+  );
+}
+```
+
+`startUpload` takes `(files, input?, options?)`, not an `options.input` object. That object shape belongs to the framework-free client. In React, pass route input as the second positional argument:
+
+```tsx
+void startUpload(files, { albumId: "profile" }, { headers: { "x-upload-source": "avatar-form" } });
+```
+
+Per-call options are `signal` and `headers`. Hook-level options are the shared upload callbacks plus optional `headers`; when both levels set headers, the per-call headers win.
+
+## useRouteConfig
+
+Use `useRouteConfig(endpoint)` when you need the route config without starting an upload:
+
+```tsx
+function AvatarRules() {
+  const { data, error, isLoading, refetch } = useRouteConfig("avatar");
+
+  if (isLoading) return <p>Loading upload rules...</p>;
+  if (error) return <button onClick={refetch}>Retry</button>;
+
+  return <p>You can upload up to {data?.maxFileCount} file.</p>;
+}
+```
+
+`useRouteConfig` takes a route key, not the selector shorthand that `useUploadStuff` accepts. It returns `{ data, error, isLoading, refetch }`. A failed refresh keeps serving the existing `data`; only the first load exposes `error`.
+
+## Endpoint switching
+
+When a `useUploadStuff` binding switches endpoints, the visible upload state resets for the new endpoint. An upload that was already running is orphaned from the new binding: its callbacks can still run, but it cannot update the new binding's `isUploading` or `progress`. Route-config state also resets while the new endpoint's config loads.
+
+## Reference
+
+- [React reference](/docs/reference/react) covers `UseUploadStuffOptions`, `UseUploadStuffReturn`, and `StartUploadFnOptions`.
+- [Framework-free client](/docs/client/index) shows the lower-level `uploadFiles` API.
+- [Type safety](/docs/type-safety) explains how the router type flows into the hooks.
+- [Quickstart](/docs/quickstart) puts the React hook in the full server-to-client flow.
