@@ -3,10 +3,71 @@ title: "Errors"
 description: "Handle UploadStuffError codes and client-side upload failures."
 ---
 
-import { Callout } from 'fumadocs-ui/components/callout';
+## UploadStuffError
 
-This page will cover `UploadStuffError`, error codes and HTTP statuses, the `{ "error": string }` response envelope for handled server errors, and client-side error handling.
+`UploadStuffError` is the error you throw from middleware or upload logic to
+reject a request with a specific HTTP status. It is exported from
+`@upload-stuff/server`.
 
-<Callout type="warn" title="Page in progress">
-This page is planned but not yet written.
-</Callout>
+```ts
+import { UploadStuffError } from "@upload-stuff/server";
+
+throw new UploadStuffError({
+  code: "FORBIDDEN",
+  message: "Sign in to upload",
+  cause, // optional
+});
+```
+
+The instance carries a `code`, the `message`, and the `status` mapped from the
+code:
+
+| Property | Type | Notes |
+| --- | --- | --- |
+| `code` | `UploadStuffErrorCode` | One of the codes below. |
+| `message` | `string` | Sent to the client as the error body. |
+| `status` | `number` | Derived from `code` — you never set it directly. |
+| `cause` | `unknown` | Optional underlying error, passed to `Error`. |
+
+## Codes and HTTP statuses
+
+`UploadStuffErrorCode` is one of:
+
+| Code | HTTP status |
+| --- | --- |
+| `INPUT_VALIDATION_ERROR` | `400` |
+| `BAD_REQUEST` | `400` |
+| `UNAUTHORIZED` | `401` |
+| `FORBIDDEN` | `403` |
+
+## Response envelope
+
+Every handled error response uses the same JSON envelope:
+
+```json
+{ "error": "Sign in to upload" }
+```
+
+A thrown `UploadStuffError` responds with its mapped status. So do the handler's
+own 4xx guards — malformed JSON, request-shape validation failures, and unknown
+endpoints all return `{ "error": ... }` with status `400`. The Node handler
+additionally serializes *unexpected* errors as `{ "error": "Internal Server
+Error" }` with status `500` — unless you pass `next`, in which case they are
+forwarded to your framework's error handling instead.
+
+## Client-side error handling
+
+The client surfaces failures through the `onUploadError` callback, which
+receives a standard `Error`:
+
+```ts
+await client.uploadFiles("avatar", files, {
+  onUploadError: (error) => {
+    // error.message is the server's `{ error }` string for handled failures.
+    toast.error(error.message);
+  },
+});
+```
+
+In React, pass the same callback to `useUploadStuff`. Aborting an in-flight
+upload triggers `onUploadAborted` rather than `onUploadError`.

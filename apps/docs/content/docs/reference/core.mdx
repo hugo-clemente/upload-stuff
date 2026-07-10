@@ -3,10 +3,81 @@ title: "@upload-stuff/core"
 description: "Source-generated reference for shared core types."
 ---
 
-import { Callout } from 'fumadocs-ui/components/callout';
+`@upload-stuff/core` holds the types shared across the server and client
+packages. You rarely import it directly — the server and client re-export the
+types you need — but this is the canonical reference for them. Every table is
+generated from the package source.
 
-This page will contain source-generated type tables for the shared `@upload-stuff/core` types that appear in server and client APIs.
+## Custom fields
 
-<Callout type="warn" title="Page in progress">
-This page is planned but not yet written.
-</Callout>
+### FieldType
+
+`"string" | "number" | "boolean"` — the value types a custom field may declare.
+
+### FieldAttributes
+
+<AutoTypeTable path="../../packages/core/src/types.ts" name="FieldAttributes" />
+
+### FieldsDeclaration
+
+`Record<string, FieldAttributes>` — the instance's central custom-column
+declaration, keyed by field name. Declared once on `UploadStuff({ fields })`; a
+route then supplies values through `.fields(resolver)`, and the resolved values
+are typed by `InferFieldValues`.
+
+## Route configuration
+
+### RouteConfig
+
+The per-route upload config you write on the server.
+
+<AutoTypeTable path="../../packages/core/src/router-types.ts" name="RouteConfig" />
+
+### PerTypeConfig
+
+Per-MIME-type constraints within a route's `files` config.
+
+<AutoTypeTable path="../../packages/core/src/file-types.ts" name="PerTypeConfig" />
+
+### NormalizedRouteConfig
+
+The normalized shape the engine and client operate on, derived from `RouteConfig`.
+
+<AutoTypeTable path="../../packages/core/src/file-types.ts" name="NormalizedRouteConfig" />
+
+## Upload results
+
+### InitUploadResult
+
+<AutoTypeTable path="../../packages/core/src/router-types.ts" name="InitUploadResult" />
+
+### CompleteUploadResult
+
+<AutoTypeTable path="../../packages/core/src/router-types.ts" name="CompleteUploadResult" />
+
+### UploadedFileData
+
+<AutoTypeTable path="../../packages/core/src/schemas.ts" name="UploadedFileData" />
+
+### ToUploadFileData
+
+<AutoTypeTable path="../../packages/core/src/schemas.ts" name="ToUploadFileData" />
+
+## Adapter contracts
+
+The interfaces custom storage and database adapters implement. See the
+[adapter guides](/docs/adapters/storage) for building your own.
+
+### StorageAdapter
+
+<AutoTypeTable path="../../packages/core/src/types.ts" name="StorageAdapter" />
+
+### DatabaseAdapter
+
+<AutoTypeTable path="../../packages/core/src/types.ts" name="DatabaseAdapter" />
+
+### UploadStuffConfig
+
+The full resolved config an `UploadStuff` instance is built from.
+
+<AutoTypeTable path="../../packages/core/src/types.ts" name="UploadStuffConfig" />
