@@ -3,10 +3,63 @@ title: "Server utilities"
 description: "Use server-side helpers for stored files outside the upload flow."
 ---
 
-import { Callout } from 'fumadocs-ui/components/callout';
+`serverUtils` lives on your `UploadStuff` instance. Use it when your server needs to create, remove, or clean up files outside the browser presigned-upload lifecycle.
 
-This page will cover the server-side helper surface exported by `@upload-stuff/server` and the instance's `serverUtils`, verified against package source when written.
+## uploadFile
 
-<Callout type="warn" title="Page in progress">
-This page is planned but not yet written.
-</Callout>
+Use `uploadFile` for server-initiated uploads: generated reports, imports from another system, or any file your backend already has in memory.
+
+Pass `{ data, content }`. `data` contains the file row fields you own: `filename`, `size`, `contentType`, `isPublic`, optional `createdAt`, and any required custom fields declared on the instance. Leave out `id`, `key`, `stored`, `storedAt`, `batchId`, `publicUrl`, and `uploadSessionData`; UploadStuff generates those lifecycle and public URL fields.
+
+```ts
+const bytes = await renderReport();
+
+await uploadStuff.serverUtils.uploadFile({
+  data: {
+    filename: "report.pdf",
+    size: bytes.byteLength,
+    contentType: "application/pdf",
+    isPublic: false,
+  },
+  content: bytes, // string | Uint8Array; Buffer is a Uint8Array in Node
+});
+```
+
+If your instance declares required custom fields, include them in `data` too:
+
+```ts
+await uploadStuff.serverUtils.uploadFile({
+  data: {
+    filename: "avatar.png",
+    size: imageBytes.byteLength,
+    contentType: "image/png",
+    isPublic: true,
+    userId: "user_123",
+  },
+  content: imageBytes,
+});
+```
+
+## deleteFiles
+
+Use `deleteFiles` when your own server action decides files should be removed. Pass database file IDs, not storage keys.
+
+```ts
+await uploadStuff.serverUtils.deleteFiles([fileId]);
+```
+
+The utility removes the storage objects first, then deletes the database rows. If storage deletion fails, the rows stay in place so you do not lose track of orphaned objects.
+
+## cleanUpFiles
+
+Use `cleanUpFiles` to sweep stale pending rows that are older than the instance upload window.
+
+```ts
+await uploadStuff.serverUtils.cleanUpFiles();
+```
+
+Schedule this from a cron job or queue worker instead of calling it from a request path. See [Cleanup job](/docs/guides/cleanup-job) for a scheduling pattern.
+
+## Reference
+
+For the full `ServerUtils` surface, see [the server reference](/docs/reference/server). For the adapter contracts these utilities call into, see [Storage adapters](/docs/adapters/storage) and [Database adapters](/docs/adapters/database).
