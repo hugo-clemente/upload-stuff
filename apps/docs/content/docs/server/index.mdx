@@ -3,10 +3,40 @@ title: "Instance configuration"
 description: "Configure the UploadStuff instance, adapters, fields, upload windows, defaults, and server utilities."
 ---
 
-import { Callout } from 'fumadocs-ui/components/callout';
+An `UploadStuff` instance is the server-side hub for uploads. It owns your storage and database adapters, the ID/key/public-URL generators, the custom-field declaration, the upload-window timing, and default route limits, and it exposes `serverUtils` for file operations that do not start in the browser.
 
-This page will cover every `UploadStuff(...)` option: `storageAdapter`, `databaseAdapter`, `filePublicUrlGenerator`, `fileIdGenerator`, `fileKeyGenerator`, `fields`, `uploadWindowSeconds`, `defaultMaxFileCount`, and `defaultMaxFileSize`, plus `serverUtils.cleanUpFiles()`, `serverUtils.uploadFile({ data, content })`, and `serverUtils.deleteFiles(fileIds)`.
+## Creating an instance
 
-<Callout type="warn" title="Page in progress">
-This page is planned but not yet written.
-</Callout>
+```ts
+import { UploadStuff } from "@upload-stuff/server";
+import { s3Adapter } from "@upload-stuff/server/adapters/s3";
+import { prismaAdapter } from "@upload-stuff/server/adapters/prisma";
+import { prisma } from "./db";
+
+export const uploadStuff = UploadStuff({
+  storageAdapter: s3Adapter({ config: { region: "us-east-1" }, bucket: "my-bucket" }),
+  databaseAdapter: prismaAdapter({ prisma }),
+  filePublicUrlGenerator: ({ key }) => `https://cdn.example.com/${key}`,
+});
+```
+
+## Options
+
+**Adapters** connect UploadStuff to your persistence layer. `storageAdapter` writes file bytes, and `databaseAdapter` records file rows and upload-session state. You usually change these when you move to a different storage bucket, database client, or adapter implementation. The built-in factories are documented in [the S3 adapter guide](/docs/adapters/s3) and [the Prisma adapter guide](/docs/adapters/prisma).
+
+**Generators** control the identifiers and URLs UploadStuff creates. Override `fileIdGenerator` when your database needs a specific ID format, `fileKeyGenerator` when storage object keys should follow your own path convention, and `filePublicUrlGenerator` when public files are served through a CDN or custom domain.
+
+**`fields`** is the central declaration for custom columns your instance persists with each file. A route's `.fields()` resolver supplies the per-upload values for those declared fields, so keep the instance declaration and route resolver in sync. See [Defining routes](/docs/server/file-router) for the route-side flow.
+
+**Timing & limits** set the defaults every route starts from. `uploadWindowSeconds` controls presigned URL expiry, the completion deadline, and the abandoned-row cleanup threshold. `defaultMaxFileCount` and `defaultMaxFileSize` are fallback route limits; override them on individual routes when a specific route needs tighter or wider constraints.
+
+For the exhaustive option table, see [the server reference](/docs/reference/server).
+
+## Server utilities
+
+Every instance exposes `serverUtils.cleanUpFiles()`, `serverUtils.uploadFile({ data, content })`, and `serverUtils.deleteFiles(fileIds)` for server-side file work outside the browser upload lifecycle. See [Out-of-band file operations](/docs/server/utilities) for examples.
+
+## Next steps
+
+- [Define upload routes](/docs/server/file-router)
+- [Mount handlers over HTTP](/docs/server/handlers)
