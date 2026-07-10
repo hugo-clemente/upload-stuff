@@ -54,7 +54,7 @@ function AvatarUpload() {
 }
 ```
 
-`startUpload` takes `(files, input?, options?)`, not an `options.input` object. That object shape belongs to the framework-free client. In React, pass route input as the second positional argument:
+`startUpload` takes `(files, input?, options?)`, not an `options.input` object. That object shape belongs to the framework-free client. In React, pass route input as the second positional argument — and when the route declares an `input` schema, that argument is required:
 
 ```tsx
 void startUpload(files, { albumId: "profile" }, { headers: { "x-upload-source": "avatar-form" } });

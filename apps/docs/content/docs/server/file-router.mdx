@@ -40,7 +40,7 @@ export type FileRouter = typeof fileRouter;
 
 ## Route config
 
-`isPublic` controls whether uploaded files are public. `files` can be an array of MIME keys, or a record keyed by a MIME key, wildcard, custom MIME type, or `blob`. In record form, each file key can set its own `maxFileSize` and `maxFileCount`. Route-level `maxFileSize` and `maxFileCount` apply to the whole route when you do not need per-type limits.
+`isPublic` controls whether uploaded files are public. `files` can be an array of MIME keys, or a record keyed by a MIME key, wildcard, custom MIME type, or `blob`. In record form, each file key can set its own `maxFileSize` and `maxFileCount`. Route-level `maxFileSize` is a **per-file** cap — it becomes the default `maxFileSize` for each type — while `maxFileCount` is the **total** number of files allowed for the whole route.
 
 For the full `RouteConfig` and `PerTypeConfig` shapes, see [the core reference](/docs/reference/core).
 

@@ -29,7 +29,7 @@ The client object is `{ getRouteConfig, uploadFiles }`.
 
 ## Uploading files
 
-Call `uploadFiles(endpoint, files, options?)`. The endpoint can be a route key or a selector, and route input goes under `options.input`.
+Call `uploadFiles(endpoint, files, options?)`. The endpoint can be a route key or a selector, and route input goes under `options.input`. When a route declares an `input` schema, the options object with `input` is required; routes without input can omit it entirely.
 
 ```ts
 const controller = new AbortController();
