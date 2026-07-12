@@ -1,11 +1,11 @@
 ---
-title: "Client engine"
+title: "JavaScript"
 description: "Use the framework-free upload client for uploads, route config, progress, aborts, and headers."
 ---
 
 The framework-free client drives uploads from the browser with `File` objects and `XMLHttpRequest`, so it works without React or any other UI framework. Pass your server's `FileRouter` type explicitly when you create it; the router is not inferred.
 
-## Creating a client
+## Create a client
 
 ```ts
 import { createUploadStuffClient } from "@upload-stuff/client";
@@ -27,7 +27,7 @@ const client = createUploadStuffClient<FileRouter>({
 
 The client object is `{ getRouteConfig, uploadFiles }`.
 
-## Uploading files
+## Upload files
 
 Call `uploadFiles(endpoint, files, options?)`. The endpoint can be a route key or a selector, and route input goes under `options.input`. When a route declares an `input` schema, the options object with `input` is required; routes without input can omit it entirely.
 
@@ -51,9 +51,23 @@ await client.uploadFiles((r) => r.avatar, files, {
 
 ## Callbacks and controls
 
-Use `onBeforeUploadBegin` to inspect or replace files before presigned URLs are requested. Use `onUploadBegin` when an individual file starts, `onUploadProgress` for global progress, `onClientUploadComplete` after the server-side completion hook finishes, `onUploadError` for failures, and `onUploadAborted` when an abort signal cancels the upload. `uploadProgressGranularity` controls how often progress updates are emitted.
+| Callback | Fires |
+| --- | --- |
+| `onBeforeUploadBegin` | Before presigned URLs are requested; can inspect or replace the `File[]`. |
+| `onUploadBegin` | When an individual file starts. |
+| `onUploadProgress` | On whole-run progress, as a percent. |
+| `onClientUploadComplete` | After the server-side completion hook finishes. |
+| `onUploadError` | On failure. |
+| `onUploadAborted` | When an abort signal cancels the upload. |
 
-`headers` and `signal` also live on the upload options. Advanced callers can pass `routeConfig` to skip the route-config fetch when they already have the normalized config. For the complete `UploadFilesOptions` and `UploadCallbacks` shapes, see [the client reference](/docs/reference/client).
+| Option | Controls |
+| --- | --- |
+| `uploadProgressGranularity` | How often progress updates are emitted. |
+| `headers` | Extra headers sent with the init and complete requests. |
+| `signal` | An `AbortSignal`; abort rejects this run during config wait, init, and byte transfer (a shared route-config fetch keeps running for other callers). After the final `PUT`, completion proceeds regardless. |
+| `routeConfig` | Skips the route-config fetch when you already have the normalized config. |
+
+For the complete `UploadFilesOptions` and `UploadCallbacks` shapes, see [the client reference](/docs/reference/client).
 
 ## Route config
 
@@ -79,7 +93,7 @@ await client.uploadFiles("avatar", files, {
 });
 ```
 
-It compresses only `image/jpeg`, `image/png`, and `image/webp` files. Other files pass through unchanged. See [Image compression](/docs/guides/image-compression) for the full workflow.
+It compresses only `image/jpeg`, `image/png`, and `image/webp` files. Other files pass through unchanged.
 
 ## Next steps
 

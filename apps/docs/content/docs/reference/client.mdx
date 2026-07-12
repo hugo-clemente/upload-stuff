@@ -1,12 +1,11 @@
 ---
-title: "@upload-stuff/client"
+title: "Client API"
 description: "Source-generated reference for the framework-free client engine."
 ---
 
-The framework-free client drives uploads straight from the browser — no UI
-framework required (it uses `File` and `XMLHttpRequest` under the hood). Type
-tables below are generated from the package source, so they always match the
-shipped API.
+`@upload-stuff/client` drives uploads straight from the browser — no UI
+framework required (it uses `File` and `XMLHttpRequest` under the hood). Tables
+are generated from the package source, so they match the shipped API.
 
 ## createUploadStuffClient
 
@@ -60,3 +59,9 @@ every report, `"fine"` every 1%, `"coarse"` every 10%. `100` is always reported.
 - **`resolveEndpoint(endpoint)`** — normalize an `EndpointArg` to its string key.
 - **`mergeHeaders(...inits)`** — merge several `HeadersInit` values into a plain object; later sources win, `undefined` skipped.
 - **`getAcceptFromRouteConfig(config)`** — derive an `accept` string from a route's `files` config (re-exported from core).
+
+## Helper types
+
+- **`EndpointArg<TRouter>`** — a route key (`"avatar"`) or a selector (`(r) => r.avatar`); accepted anywhere an endpoint is named.
+- **`inferRouteServerData<TRoute>`** — the route's `onUploadComplete` return type; what `onClientUploadComplete` receives as `res.serverData`.
+- **`inferRouteInput<TRoute>`** — the schema's **input** side: what the client sends. Server callbacks receive the parsed output side, which can differ when the schema transforms.

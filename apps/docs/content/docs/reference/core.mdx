@@ -1,12 +1,12 @@
 ---
-title: "@upload-stuff/core"
+title: "Core types"
 description: "Source-generated reference for shared core types."
 ---
 
 `@upload-stuff/core` holds the types shared across the server and client
 packages. You rarely import it directly — the server and client re-export the
-types you need — but this is the canonical reference for them. Every table is
-generated from the package source.
+types you need — but this is the canonical reference for them. Tables are
+generated from the package source, so they match the shipped API.
 
 ## Custom fields
 
@@ -65,8 +65,9 @@ The normalized shape the engine and client operate on, derived from `RouteConfig
 
 ## Adapter contracts
 
-The interfaces custom storage and database adapters implement. See the
-[adapter guides](/docs/adapters/storage) for building your own.
+The interfaces custom storage and database adapters implement. See
+[Custom database](/docs/adapters/database) for writing your own database
+adapter.
 
 ### StorageAdapter
 

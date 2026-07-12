@@ -1,5 +1,5 @@
 ---
-title: "Security model"
+title: "Security"
 description: "Trust boundaries, capability-based completion, upload windows, and route-auth gotchas."
 ---
 
@@ -23,7 +23,8 @@ Init generates a `batchToken` from 32 random bytes using Web Crypto and stores o
 
 - A leaked or enumerated database `batchId` is useless because completion hashes the submitted token again.
 - The token is bound to its endpoint. Completing a batch through a different route than the one used at init is rejected, so the wrong route's `onUploadComplete` cannot run.
-- The `batchToken` itself is a bearer capability. Anyone holding it can complete that batch on that endpoint within the upload window. Do not log it or persist it beyond the upload lifetime.
+- The `batchToken` itself is a bearer capability. Anyone holding it can complete that batch on that endpoint within the upload window, and receives whatever your `onUploadComplete` returns — keep sensitive values out of that payload. Do not log the token or persist it beyond the upload lifetime.
+- The token carries no identity. For owner-scoped listing, persist the uploader in an app-declared [`.fields()`](/docs/server/file-router) column and filter your own queries by it.
 
 Route middleware runs on **init only**. Completion is protected by the token, not by re-running middleware, so auth decisions belong in middleware before any presigned URL exists.
 
@@ -64,19 +65,19 @@ It does **not** protect upload endpoints. A route with `isPublic: false` still a
 
 ## `createContext` must be anonymous-safe
 
-The handler calls `createContext({ headers })` for every request under the base path, including route-config reads, unknown endpoints, and wrong methods. Exceptions become host-runtime errors; with `toNodeHandler`, they are forwarded to `next` when present, otherwise returned as a `500` JSON response.
+The handler calls `createContext({ headers })` for every request under the base path, including route-config reads, unknown endpoints, and wrong methods. Exceptions become host-runtime errors (how each wrapper surfaces them is covered in [Errors](/docs/reference/errors)).
 
-If `createContext` throws for anonymous users, the public route-config endpoint breaks and probes become server errors. Resolve identity gently there; enforce it in middleware:
+If `createContext` throws for anonymous users, the public route-config endpoint breaks and probes become server errors. Resolve identity gently there — `null` for anonymous is fine:
 
 ```ts
-// createContext: resolve, never reject
 createContext: async ({ headers }) => ({
-  userId: await getUserIdOrNull(headers), // null for anonymous is fine
+  userId: await getUserIdOrNull(headers),
 }),
 ```
 
+Enforce it in middleware — that is the gate:
+
 ```ts
-// middleware: this is the gate
 .middleware(({ ctx }) => {
   if (!ctx.userId) throw new UploadStuffError({ code: "FORBIDDEN", message: "Sign in to upload" });
   return { userId: ctx.userId };
@@ -90,5 +91,5 @@ createContext: async ({ headers }) => ({
 - Keep route config and endpoint names free of secrets.
 - Declare file constraints (`files`, sizes, counts) on the route; the server enforces them on init.
 - Harden storage at the bucket: CORS, ACL/public-access settings, and credentials. See the [S3 adapter](/docs/adapters/s3) page.
-- Run a [cleanup job](/docs/guides/cleanup-job) to sweep abandoned pending uploads.
+- Run [`serverUtils.cleanUpFiles`](/docs/server/utilities#cleanupfiles) on a schedule to sweep abandoned pending uploads.
 - Make custom storage adapters implement real `verifyUpload` checks.

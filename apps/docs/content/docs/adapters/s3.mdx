@@ -1,12 +1,66 @@
 ---
 title: "S3"
-description: "Configure the built-in S3 storage adapter and understand its verification behavior."
+description: "Configure the built-in S3 storage adapter: client config, ACLs, object metadata, and peer dependencies."
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
-This page will cover `s3Adapter` from `@upload-stuff/server/adapters/s3`, configuration, object metadata, required signed metadata headers, presigned upload behavior, verification checks, ACL behavior, CORS, and bucket hardening.
+`s3Adapter` from `@upload-stuff/server/adapters/s3` is a `StorageAdapter`
+factory backed by the AWS SDK. Pass it straight to `storageAdapter` inside
+`UploadStuff(...)` — the instance calls the factory with its resolved types:
 
-<Callout type="warn" title="Page in progress">
-This page is planned but not yet written.
+```ts
+import { s3Adapter } from "@upload-stuff/server/adapters/s3";
+
+storageAdapter: s3Adapter({
+  config: {
+    region: "us-east-1",
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+  },
+  bucket: process.env.S3_BUCKET!,
+}),
+```
+
+`config` accepts the full `S3ClientConfig` from `@aws-sdk/client-s3`.
+
+## ACLs
+
+The adapter sets an ACL on every upload: `public-read` when the route's
+`isPublic` is true, `private` otherwise.
+
+<Callout type="warn" title="Your bucket must allow ACLs">
+S3's default Object Ownership setting ("bucket owner enforced") rejects any
+request that carries an ACL, so presigned `PUT`s fail. Set Object Ownership to
+"bucket owner preferred" (ACLs enabled) for buckets used with this adapter.
 </Callout>
+
+## Object metadata
+
+`objectMetadata` is optional and typed against the instance's declared
+`fields` — keep the adapter inline in `UploadStuff(...)` so that inference
+works:
+
+```ts
+storageAdapter: s3Adapter({
+  // ...
+  objectMetadata: (file) => ({ owner: file.userId ?? "" }),
+}),
+```
+
+The adapter signs the resolved values as `x-amz-meta-*` request headers (kept
+out of the presigned URL) and the client replays them on the `PUT`. Object
+metadata is returned on every `GetObject` — on public buckets, avoid values you
+don't intend to expose (a user id, for example).
+
+## Peer dependencies
+
+`@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` (`>=3.700.0`) are
+optional peer dependencies — install them only if you use this adapter, so
+projects on another storage backend don't pull in the AWS SDK:
+
+```sh
+pnpm add @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+```

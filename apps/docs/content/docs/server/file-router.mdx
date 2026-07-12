@@ -3,7 +3,7 @@ title: "File router"
 description: "Define typed upload routes with file constraints, input schemas, middleware, fields, and completion callbacks."
 ---
 
-The file router maps route names to upload routes. Each route is one `f(routeConfig)....build()` chain, and the map you export is your `FileRouter`: the type your client consumes.
+The file router maps route names to upload routes. Each route is one `f(routeConfig)....build()` chain, and the map you export is your `FileRouter`: the type your client consumes. Name routes after what they carry — `avatar`, `resume`, `messageAttachment`.
 
 ## Defining a route
 
@@ -40,57 +40,46 @@ export type FileRouter = typeof fileRouter;
 
 ## Route config
 
-`isPublic` controls whether uploaded files are public. `files` can be an array of MIME keys, or a record keyed by a MIME key, wildcard, custom MIME type, or `blob`. In record form, each file key can set its own `maxFileSize` and `maxFileCount`. Route-level `maxFileSize` is a **per-file** cap — it becomes the default `maxFileSize` for each type — while `maxFileCount` is the **total** number of files allowed for the whole route.
+| Option | Meaning |
+| --- | --- |
+| `isPublic` | Whether uploaded files are public. |
+| `files` | An array of MIME keys, or a record keyed by MIME key, wildcard, custom MIME type, or `blob` — record entries can set their own `maxFileSize` and `maxFileCount`. |
+| `maxFileSize` | **Per-file** cap; becomes the default for each type. |
+| `maxFileCount` | **Total** number of files allowed for the whole route. |
 
 For the full `RouteConfig` and `PerTypeConfig` shapes, see [the core reference](/docs/reference/core).
 
 ## The builder chain
 
-`.input(schema)` validates the client-supplied `input` with any Standard Schema compatible parser. The parsed output is what later builder steps receive as `input`.
-
-`.middleware(fn)` runs at init only. Put auth and context gates here; its return value becomes `middlewareData` for `.fields()` and `.onUploadComplete()`.
-
-`.fields(resolver)` supplies values for custom fields declared on your `UploadStuff` instance. It is required by the type system when the instance declares any required custom field.
-
-`.onUploadComplete(fn)` runs on your server after storage verification. It receives `{ files, input, middlewareData }`; there is no `ctx` at this stage.
-
-`.build()` finalizes the route and is required for every route in the router map.
+- `.input(schema)` — validates the client-supplied `input` with any Standard Schema compatible parser; the parsed output is what later steps receive as `input`.
+- `.middleware(fn)` — runs at init only; put auth and context gates here, and its return becomes `middlewareData` for `.fields()` and `.onUploadComplete()`.
+- `.fields(resolver)` — supplies values for custom fields declared on your `UploadStuff` instance.
+- `.onUploadComplete(fn)` — runs on your server after storage verification; receives `{ files, input, middlewareData }`, no `ctx`.
+- `.build()` — finalizes the route; required for every route in the map.
 
 ## Custom fields
 
-Declare custom fields on the instance, then resolve values for each upload route with `.fields()`. When a declared field is required, omitting `.fields()` makes `.build()` resolve to a type error instead of a route.
+Declare custom fields on the instance; each route resolves their values with `.fields()`:
 
 ```ts
-import { z } from "zod";
-import { UploadStuff, createUploadStuffRouter, UploadStuffError } from "@upload-stuff/server";
-
 export const uploadStuff = UploadStuff({
-  storageAdapter,
-  databaseAdapter,
-  filePublicUrlGenerator: ({ key }) => `https://cdn.example.com/${key}`,
+  // ...
   fields: {
     albumId: { type: "string", required: true },
   },
 });
-
-type Context = { userId: string | null };
-
-const f = createUploadStuffRouter<typeof uploadStuff, Context>();
-
-export const fileRouter = {
-  avatar: f({ isPublic: true, files: ["image/*"], maxFileCount: 1 })
-    .input(z.object({ albumId: z.string() }))
-    .middleware(({ ctx }) => {
-      if (!ctx.userId) throw new UploadStuffError({ code: "FORBIDDEN", message: "Sign in to upload" });
-      return { userId: ctx.userId };
-    })
-    .fields(({ input }) => ({ albumId: input.albumId }))
-    .onUploadComplete(({ files, input, middlewareData }) => {
-      return { albumId: input.albumId, uploadedBy: middlewareData.userId, fileCount: files.length };
-    })
-    .build(),
-};
 ```
+
+```ts
+avatar: f({ isPublic: true, files: ["image/*"], maxFileCount: 1 })
+  .input(z.object({ albumId: z.string() }))
+  .middleware(/* ... */)
+  .fields(({ input }) => ({ albumId: input.albumId }))
+  // ...
+```
+
+When a declared field is required, omitting `.fields()` makes `.build()`
+resolve to a type error instead of a route.
 
 ## Gotchas
 
@@ -98,8 +87,6 @@ export const fileRouter = {
 - Middleware runs on init, not on completion.
 - Each builder method is intended to be called once.
 - Order the chain so later steps can see earlier inferred data.
-- `.fields()` is required when your instance declares required custom fields.
-- `.build()` is mandatory.
 
 Read [the security model](/docs/concepts/security) before shipping public upload routes.
 

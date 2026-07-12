@@ -1,3 +1,5 @@
 {
-  "pages": ["storage", "s3", "database", "prisma"]
+  "title": "Adapters",
+  "defaultOpen": false,
+  "pages": ["s3", "prisma", "database"]
 }

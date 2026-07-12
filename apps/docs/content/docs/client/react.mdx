@@ -3,7 +3,7 @@ title: "React"
 description: "Use React bindings built on the framework-free client engine."
 ---
 
-The React bindings are ergonomics over the [framework-free client](/docs/client/index). Create the helpers once, export the hooks from a client-side module, and keep the rest of your components focused on upload UI.
+The React bindings are ergonomics over the [framework-free client](/docs/client). Create the helpers once, export the hooks from a client-side module, and keep the rest of your components focused on upload UI.
 
 ## Setup
 
@@ -42,7 +42,7 @@ function AvatarUpload() {
         disabled={isLoading || isUploading}
         onChange={(event) => {
           const files = Array.from(event.currentTarget.files ?? []);
-          void startUpload(files, { albumId: "profile" });
+          startUpload(files, { albumId: "profile" }).catch(() => {});
         }}
       />
       <button type="button" disabled={!isUploading} onClick={abort}>
@@ -83,9 +83,10 @@ function AvatarRules() {
 
 When a `useUploadStuff` binding switches endpoints, the visible upload state resets for the new endpoint. An upload that was already running is orphaned from the new binding: its callbacks can still run, but it cannot update the new binding's `isUploading` or `progress`. Route-config state also resets while the new endpoint's config loads.
 
-## Reference
+## Next steps
 
-- [React reference](/docs/reference/react) covers `UseUploadStuffOptions`, `UseUploadStuffReturn`, and `StartUploadFnOptions`.
-- [Framework-free client](/docs/client/index) shows the lower-level `uploadFiles` API.
-- [Type safety](/docs/type-safety) explains how the router type flows into the hooks.
-- [Quickstart](/docs/quickstart) puts the React hook in the full server-to-client flow.
+<Cards>
+  <Card title="React API" href="/docs/reference/react" />
+  <Card title="JavaScript client" href="/docs/client" />
+  <Card title="Type safety" href="/docs/type-safety" />
+</Cards>

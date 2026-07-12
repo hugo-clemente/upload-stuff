@@ -1,11 +1,11 @@
 ---
-title: "Instance configuration"
+title: "Configuration"
 description: "Configure the UploadStuff instance, adapters, fields, upload windows, defaults, and server utilities."
 ---
 
-An `UploadStuff` instance is the server-side hub for uploads. It owns your storage and database adapters, the ID/key/public-URL generators, the custom-field declaration, the upload-window timing, and default route limits, and it exposes `serverUtils` for file operations that do not start in the browser.
+An `UploadStuff` instance owns your adapters, generators, and route defaults.
 
-## Creating an instance
+## Create an instance
 
 ```ts
 import { UploadStuff } from "@upload-stuff/server";
@@ -22,13 +22,15 @@ export const uploadStuff = UploadStuff({
 
 ## Options
 
-**Adapters** connect UploadStuff to your persistence layer. `storageAdapter` writes file bytes, and `databaseAdapter` records file rows and upload-session state. You usually change these when you move to a different storage bucket, database client, or adapter implementation. The built-in factories are documented in [the S3 adapter guide](/docs/adapters/s3) and [the Prisma adapter guide](/docs/adapters/prisma).
-
-**Generators** control the identifiers and URLs UploadStuff creates. Override `fileIdGenerator` when your database needs a specific ID format, `fileKeyGenerator` when storage object keys should follow your own path convention, and `filePublicUrlGenerator` when public files are served through a CDN or custom domain.
-
-**`fields`** is the central declaration for custom columns your instance persists with each file. A route's `.fields()` resolver supplies the per-upload values for those declared fields, so keep the instance declaration and route resolver in sync. See [Defining routes](/docs/server/file-router) for the route-side flow.
-
-**Timing & limits** set the defaults every route starts from. `uploadWindowSeconds` controls presigned URL expiry, the completion deadline, and the abandoned-row cleanup threshold. `defaultMaxFileCount` and `defaultMaxFileSize` are fallback route limits; override them on individual routes when a specific route needs tighter or wider constraints.
+| Option | Controls | Override when |
+| --- | --- | --- |
+| `storageAdapter` / `databaseAdapter` | Where file bytes and file rows live — see the [S3](/docs/adapters/s3) and [Prisma](/docs/adapters/prisma) adapters | You target a different object store or ORM |
+| `fileIdGenerator` | File row IDs | Your database needs a specific ID format |
+| `fileKeyGenerator` | Storage object keys | Keys should follow your own path convention |
+| `filePublicUrlGenerator` | Public URLs persisted per file | Public files are served through a CDN or custom domain |
+| `fields` | Custom columns persisted with each file, resolved per upload by [`.fields()`](/docs/server/file-router) | Your `File` table carries app columns like `userId` |
+| `uploadWindowSeconds` | Presigned URL expiry, completion deadline, and cleanup threshold | The default `3600` is too short or too long for your uploads |
+| `defaultMaxFileCount` / `defaultMaxFileSize` | Fallback route limits | Most routes share limits other than `20` files / `4MB` |
 
 For the exhaustive option table, see [the server reference](/docs/reference/server).
 

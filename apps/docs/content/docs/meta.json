@@ -2,22 +2,16 @@
   "pages": [
     "---Get Started---",
     "index",
-    "why",
     "quickstart",
-    "type-safety",
-    "---Concepts---",
+    "why",
     "...concepts",
+    "type-safety",
     "---Server---",
     "...server",
+    "adapters",
     "---Client---",
     "...client",
-    "---Adapters---",
-    "...adapters",
-    "---Guides---",
-    "...guides",
     "---Reference---",
-    "...reference",
-    "---AI Resources---",
-    "...ai"
+    "...reference"
   ]
 }

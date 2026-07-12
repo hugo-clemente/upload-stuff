@@ -1,5 +1,5 @@
 ---
-title: "Server utilities"
+title: "Utilities"
 description: "Use server-side helpers for stored files outside the upload flow."
 ---
 
@@ -9,7 +9,12 @@ description: "Use server-side helpers for stored files outside the upload flow."
 
 Use `uploadFile` for server-initiated uploads: generated reports, imports from another system, or any file your backend already has in memory.
 
-Pass `{ data, content }`. `data` contains the file row fields you own: `filename`, `size`, `contentType`, `isPublic`, and any required custom fields declared on the instance. Leave out the library-owned columns — `id`, `key`, `stored`, `storedAt`, `createdAt`, `batchId`, `publicUrl`, and `uploadSessionData`; UploadStuff stamps those lifecycle, timestamp, and public-URL fields itself.
+Pass `{ data, content }`:
+
+- **You supply:** `filename`, `size`, `contentType`, `isPublic`, any required custom fields, and optionally `createdAt` — the browser flow stamps it, `uploadFile` does not.
+- **Library-filled:** `id`, `key`, `publicUrl`, `stored`, `storedAt`. `batchId` and `uploadSessionData` belong to the browser flow and stay unset.
+
+`content` accepts a `string` or a `Uint8Array` (a Node `Buffer` is a `Uint8Array`).
 
 ```ts
 const bytes = await renderReport();
@@ -21,7 +26,7 @@ await uploadStuff.serverUtils.uploadFile({
     contentType: "application/pdf",
     isPublic: false,
   },
-  content: bytes, // string | Uint8Array; Buffer is a Uint8Array in Node
+  content: bytes,
 });
 ```
 
@@ -58,8 +63,8 @@ Use `cleanUpFiles` to sweep stale pending rows that are older than the instance 
 await uploadStuff.serverUtils.cleanUpFiles();
 ```
 
-Schedule this from a cron job or queue worker instead of calling it from a request path. See [Cleanup job](/docs/guides/cleanup-job) for a scheduling pattern.
+Schedule this from a cron job or queue worker instead of calling it from a request path.
 
 ## Reference
 
-For the full `ServerUtils` surface, see [the server reference](/docs/reference/server). For the adapter contracts these utilities call into, see [Storage adapters](/docs/adapters/storage) and [Database adapters](/docs/adapters/database).
+For the full `ServerUtils` surface, see [the server reference](/docs/reference/server). For the adapter contracts these utilities call into, see [Core types](/docs/reference/core#adapter-contracts).

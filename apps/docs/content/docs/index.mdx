@@ -1,12 +1,12 @@
 ---
-title: upload-stuff
+title: Introduction
 description: A typed, presigned-S3 file-upload library for React and Next.js.
 ---
 
-upload-stuff is a file-upload library built on presigned S3 uploads, a typed
-HTTP wire contract, and React hooks. Define a typed file router
-on the server, wire it into your Next.js App Router, and call `useUploadStuff`
-from the client.
+upload-stuff is a **typed, bring-your-own-bucket file-upload library** for React
+and Next.js: presigned S3 uploads with **one router definition that types both
+server and client**. Define a file router on the server, wire it into your
+Next.js App Router, and call `useUploadStuff` from the client.
 
 One definition on the server types both your handlers and the client hook. Every
 sample on this site is type-checked against the current packages, so the hover
@@ -24,7 +24,7 @@ const uploadStuff = UploadStuff({
   databaseAdapter,
   filePublicUrlGenerator: ({ key }) => `https://cdn.example.com/${key}`,
 });
-
+// ---cut---
 const f = createUploadStuffRouter<typeof uploadStuff, { userId: string }>();
 
 const avatar = f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
@@ -32,7 +32,6 @@ const avatar = f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
   .onUploadComplete(({ middlewareData }) => ({ owner: middlewareData.uploadedBy }))
   .build();
 
-// What the client's onClientUploadComplete receives — inferred, not annotated:
 type ServerData = (typeof avatar)["$types"]["output"];
 //   ^?
 ```

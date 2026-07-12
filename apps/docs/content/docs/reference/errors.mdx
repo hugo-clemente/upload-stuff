@@ -15,7 +15,7 @@ import { UploadStuffError } from "@upload-stuff/server";
 throw new UploadStuffError({
   code: "FORBIDDEN",
   message: "Sign in to upload",
-  cause, // optional
+  cause,
 });
 ```
 
@@ -58,16 +58,20 @@ forwarded to your framework's error handling instead.
 ## Client-side error handling
 
 The client surfaces failures through the `onUploadError` callback, which
-receives a standard `Error`:
+receives a standard `Error`. For handled failures, `error.message` is the
+server's `{ error }` string:
 
 ```ts
 await client.uploadFiles("avatar", files, {
   onUploadError: (error) => {
-    // error.message is the server's `{ error }` string for handled failures.
     toast.error(error.message);
   },
 });
 ```
+
+`uploadFiles` — and the React `startUpload` — also **reject** with the same
+error after `onUploadError` runs, so attach a `.catch` (or `await` in a
+`try/catch`) to avoid unhandled rejections.
 
 In React, pass the same callback to `useUploadStuff`. Aborting an in-flight
 upload triggers `onUploadAborted` rather than `onUploadError`.

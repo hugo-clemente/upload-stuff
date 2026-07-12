@@ -1,12 +1,54 @@
 ---
 title: "Prisma"
-description: "Use the built-in Prisma database adapter and the File model it requires."
+description: "Use the built-in Prisma database adapter and its required File model."
 ---
 
-import { Callout } from 'fumadocs-ui/components/callout';
+`prismaAdapter` from `@upload-stuff/server/adapters/prisma` persists file rows
+through a Prisma client. It is a **reference adapter for one specific `File`
+schema**, not a general-purpose adapter. Pass it straight to `databaseAdapter`;
+its types are inferred from your `UploadStuff(...)` config.
 
-This page will cover `prismaAdapter` from `@upload-stuff/server/adapters/prisma`, the required `File` model columns, declared custom fields, and how cleanup queries map to Prisma.
+```ts
+import { prismaAdapter } from "@upload-stuff/server/adapters/prisma";
 
-<Callout type="warn" title="Page in progress">
-This page is planned but not yet written.
-</Callout>
+const db = prismaAdapter({ prisma });
+```
+
+The adapter only calls methods available on every Prisma relational connector —
+`createMany` and `updateMany`, not the `*AndReturn` variants — so it works with
+MySQL and SQL Server as well as PostgreSQL and SQLite.
+
+## Required `File` model
+
+Your Prisma schema must define a `File` model with at least these columns:
+
+```prisma
+model File {
+  id                String    @id
+  key               String    @unique
+  filename          String
+  size              Int
+  publicUrl         String
+  contentType       String
+  uploadSessionData Json?
+  isPublic          Boolean   @default(false)
+  stored            Boolean   @default(false)
+  storedAt          DateTime?
+  batchId           String?
+  createdAt         DateTime  @default(now())
+  // Plus one column per custom field declared on `UploadStuff({ fields })`,
+  // e.g. for `fields: { entityId: {...}, userId: {...} }`:
+  entityId          String?
+  userId            String?
+}
+```
+
+## Peer dependency
+
+`@prisma/client` (`>=5.16`) is an optional peer dependency:
+
+```sh
+pnpm add @prisma/client
+```
+
+For any other ORM or database, see [Custom database](/docs/adapters/database).
