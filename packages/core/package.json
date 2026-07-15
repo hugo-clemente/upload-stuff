@@ -1,6 +1,6 @@
 {
   "name": "@upload-stuff/core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Shared isomorphic types, Zod schemas and errors for upload-stuff.",
   "keywords": [
     "file-upload",
