@@ -43,7 +43,7 @@
     "typescript": "5.9.3"
   },
   "peerDependencies": {
-    "@upload-stuff/client": "workspace:^",
+    "@upload-stuff/client": ">=0.0.0",
     "react": ">=19"
   }
 }

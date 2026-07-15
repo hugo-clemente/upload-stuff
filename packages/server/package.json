@@ -1,6 +1,6 @@
 {
   "name": "@upload-stuff/server",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Server runtime, Next.js handler and S3/Prisma adapters for upload-stuff.",
   "keywords": [
     "file-upload",
