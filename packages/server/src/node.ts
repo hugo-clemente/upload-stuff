@@ -57,6 +57,14 @@ const toRequest = async (req: NodeRequestLike): Promise<Request> => {
   return new Request(url, { method, headers, body: await requestBody(req, method) });
 };
 
+/**
+ * Node `http` adapter for Express, NestJS, or bare `node:http`. Returns an
+ * `(req, res, next?)` middleware; when `next` is present (Express/Nest), errors
+ * are forwarded to it rather than answered directly.
+ *
+ * @example
+ * app.all("/api/upload-stuff/*", toNodeHandler({ fileRouter, uploadStuff, createContext }));
+ */
 export const toNodeHandler = <
   TContext extends ValidContextObject,
   TFields extends FieldsDeclaration = Record<never, never>,

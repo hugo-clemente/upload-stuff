@@ -217,12 +217,19 @@ export type AnyUploadStuff = Omit<
 };
 
 /**
- * Create an UploadStuff instance. The custom-`fields` declaration is inferred
- * directly from the single config object and carried to adapters via a type marker.
+ * Create an UploadStuff instance: wires the storage + database adapters and the
+ * key/URL generators shared by every route. The custom-`fields` declaration is
+ * inferred from this config and carried to the adapters, so their metadata
+ * resolvers are typed against it.
  *
- * ```ts
- * const uploadStuff = UploadStuff({ ...config });
- * ```
+ * @throws if a custom field reuses a reserved column name, or a numeric option
+ * is out of range (`uploadWindowSeconds` 1–604800, non-negative counts, positive sizes).
+ * @example
+ * const uploadStuff = UploadStuff({
+ *   storageAdapter: s3Adapter({ config, bucket }),
+ *   databaseAdapter: prismaAdapter({ prisma }),
+ *   filePublicUrlGenerator: ({ key }) => `https://cdn.example.com/${key}`,
+ * });
  */
 export const UploadStuff = <TFields extends FieldsDeclaration = Record<never, never>>(
   // The `& { fields?: ValidateFieldsDeclaration<TFields> }` intersection blocks

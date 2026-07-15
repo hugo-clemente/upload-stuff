@@ -15,6 +15,18 @@ import { createProgressReporter } from "./progress";
 import type { CreateUploadStuffClientOptions, UploadFilesArgs, UploadFilesOptions } from "./types";
 import { uploadFileWithProgress } from "./upload";
 
+/**
+ * Create the framework-free upload engine. Type it with your server's
+ * `fileRouter` (`typeof fileRouter`) for end-to-end inference of endpoints,
+ * `input`, and `serverData`. Framework bindings (e.g. `@upload-stuff/react`)
+ * wrap the returned client.
+ *
+ * @example
+ * const client = createUploadStuffClient<typeof fileRouter>({
+ *   baseURL: "https://app.example.com",
+ * });
+ * await client.uploadFiles("avatar", files);
+ */
 export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
   options: CreateUploadStuffClientOptions,
 ) => {
@@ -96,6 +108,16 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
     return fresh;
   };
 
+  /**
+   * Fetch an endpoint's normalized route config (accepted types, size/count
+   * caps). Cached per endpoint for the client's lifetime and deduped across
+   * concurrent callers.
+   *
+   * @param endpoint - target route name or `(r) => r.name` selector
+   * @param opts - `{ force: true }` refetches a stale config (still deduped;
+   *   the last good config keeps serving until the refresh resolves)
+   * @returns the endpoint's {@link NormalizedRouteConfig}
+   */
   const getRouteConfig = <TEndpoint extends keyof TFileRouter>(
     endpoint: EndpointArg<TFileRouter, TEndpoint>,
     opts?: {
@@ -114,6 +136,17 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
       // The server serves the NORMALIZED config, not the authored `routeConfig`.
     ) as Promise<NormalizedRouteConfig>;
 
+  /**
+   * Run a full upload: validate, init, PUT each file to storage with progress,
+   * then complete.
+   *
+   * @param endpoint - target route name or `(r) => r.name` selector
+   * @param files - files to upload; rejects if empty
+   * @param options - lifecycle callbacks, `AbortSignal`, `headers`, and `input`
+   *   (required and typed when the route declares `.input()`)
+   * @returns the verified {@link CompleteUploadResult}
+   * @throws on validation failure, transfer error, or abort
+   */
   const uploadFiles = async <TEndpoint extends keyof TFileRouter>(
     endpoint: EndpointArg<TFileRouter, TEndpoint>,
     files: File[],
@@ -299,6 +332,7 @@ export const createUploadStuffClient = <TFileRouter extends UploadStuffRouter>(
   return client as typeof client & { "~router"?: TFileRouter };
 };
 
+/** The client returned by {@link createUploadStuffClient}, typed to a `fileRouter`. */
 export type UploadStuffClient<TFileRouter extends UploadStuffRouter> = ReturnType<
   typeof createUploadStuffClient<TFileRouter>
 >;
