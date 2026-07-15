@@ -13,25 +13,16 @@ the real inferred types, not hand-written annotations.
 
 ## One definition, both ends
 
-Hover the `// ^?` lines — those types are inferred, not declared. The
-`.middleware()` return flows into `.onUploadComplete()`, and the
-`.onUploadComplete()` return flows to the client's `onClientUploadComplete`.
+Hover the `// ^?` lines — those types are inferred, not declared.
+`.middleware()`'s return is exactly the `middlewareData` that
+`.onUploadComplete()` receives:
 
 ```ts twoslash
 import { UploadStuff, createUploadStuffRouter } from "@upload-stuff/server";
-import type {
-  StorageAdapter,
-  DatabaseAdapter,
-  inferRouteServerData,
-} from "@upload-stuff/server";
-import { createUploadStuffClient } from "@upload-stuff/client";
-import { createUploadStuffReactHelpers } from "@upload-stuff/react";
-import { z } from "zod";
+import type { StorageAdapterFactory, DatabaseAdapterFactory } from "@upload-stuff/server";
 
-// `declare const` stands in for your real S3 + database adapters, so this whole
-// sample type-checks with no runtime wiring.
-declare const storageAdapter: StorageAdapter;
-declare const databaseAdapter: DatabaseAdapter;
+declare const storageAdapter: StorageAdapterFactory;
+declare const databaseAdapter: DatabaseAdapterFactory;
 
 const uploadStuff = UploadStuff({
   storageAdapter,
@@ -39,29 +30,77 @@ const uploadStuff = UploadStuff({
   filePublicUrlGenerator: ({ key }) => `https://cdn.example.com/${key}`,
 });
 
-// ---- Server: one typed route ----
+type Context = { userId: string };
+const f = createUploadStuffRouter<typeof uploadStuff, Context>();
+// ---cut---
+const avatar = f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
+  .middleware(({ ctx }) => ({ uploadedBy: ctx.userId }))
+  .onUploadComplete(({ middlewareData }) => {
+    //                 ^?
+    return { ownerId: middlewareData.uploadedBy };
+  })
+  .build();
+```
+
+`.input()` works the same way: the schema's parsed **output** is what every
+later step receives. Here the schema transforms a comma-separated string, so
+`input.tags` is a `string[]`:
+
+```ts twoslash
+import { UploadStuff, createUploadStuffRouter } from "@upload-stuff/server";
+import type { StorageAdapterFactory, DatabaseAdapterFactory } from "@upload-stuff/server";
+import { z } from "zod";
+
+declare const storageAdapter: StorageAdapterFactory;
+declare const databaseAdapter: DatabaseAdapterFactory;
+
+const uploadStuff = UploadStuff({
+  storageAdapter,
+  databaseAdapter,
+  filePublicUrlGenerator: ({ key }) => `https://cdn.example.com/${key}`,
+});
+
+type Context = { userId: string };
+const f = createUploadStuffRouter<typeof uploadStuff, Context>();
+// ---cut---
+const gallery = f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
+  .input(z.object({ tags: z.string().transform((s) => s.split(",")) }))
+  .onUploadComplete(({ input }) => {
+    //                 ^?
+    return { tags: input.tags };
+  })
+  .build();
+```
+
+On the client, `onClientUploadComplete` receives the `onUploadComplete` return
+as `res.serverData` — no annotation anywhere:
+
+```ts twoslash
+import { UploadStuff, createUploadStuffRouter } from "@upload-stuff/server";
+import type { StorageAdapterFactory, DatabaseAdapterFactory } from "@upload-stuff/server";
+import { createUploadStuffClient } from "@upload-stuff/client";
+import { createUploadStuffReactHelpers } from "@upload-stuff/react";
+
+declare const storageAdapter: StorageAdapterFactory;
+declare const databaseAdapter: DatabaseAdapterFactory;
+
+const uploadStuff = UploadStuff({
+  storageAdapter,
+  databaseAdapter,
+  filePublicUrlGenerator: ({ key }) => `https://cdn.example.com/${key}`,
+});
+
 type Context = { userId: string };
 const f = createUploadStuffRouter<typeof uploadStuff, Context>();
 
 const fileRouter = {
   avatar: f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
-    .input(z.object({ folderId: z.string() }))
     .middleware(({ ctx }) => ({ uploadedBy: ctx.userId }))
-    .onUploadComplete(({ input, middlewareData }) => {
-      // `input` and `middlewareData` are typed from .input() and .middleware().
-      // Whatever you return here is sent to the client, typed:
-      return { ownerId: middlewareData.uploadedBy, folder: input.folderId };
-    })
+    .onUploadComplete(({ middlewareData }) => ({ ownerId: middlewareData.uploadedBy }))
     .build(),
 };
-
 export type FileRouter = typeof fileRouter;
-
-// `middlewareData` in onUploadComplete is exactly the middleware's return:
-type MiddlewareData = FileRouter["avatar"]["$types"]["middlewareData"];
-//   ^?
-
-// ---- Client: the hook infers everything from `FileRouter` ----
+// ---cut---
 const client = createUploadStuffClient<FileRouter>({
   baseURL: "https://example.com",
 });
@@ -69,14 +108,10 @@ const { useUploadStuff } = createUploadStuffReactHelpers(client);
 
 useUploadStuff((r) => r.avatar, {
   onClientUploadComplete: (res) => {
-    // No annotation — `res.serverData` is the onUploadComplete return:
-    console.log(res.serverData.ownerId);
+    console.log(res.serverData);
+    //              ^?
   },
 });
-
-// The client payload type is derived from the server route:
-type ClientPayload = inferRouteServerData<FileRouter["avatar"]>;
-//   ^?
 ```
 
 The `(r) => r.avatar` selector is more than a string: because the route name is a
@@ -85,18 +120,19 @@ definition.
 
 ## What the compiler rejects
 
-Because both ends share one definition, the mistakes that would normally surface
-at runtime become compile errors instead. These two fail to build:
+Two examples: `.middleware()` returned `{ uploadedBy }`, so reading
+`middlewareData.role` fails — and the selector is type-checked against the
+router, so the misspelled `r.avatr` is rejected:
 
 ```ts twoslash
 // @errors: 2339 2551
 import { UploadStuff, createUploadStuffRouter } from "@upload-stuff/server";
-import type { StorageAdapter, DatabaseAdapter } from "@upload-stuff/server";
+import type { StorageAdapterFactory, DatabaseAdapterFactory } from "@upload-stuff/server";
 import { createUploadStuffClient } from "@upload-stuff/client";
 import { createUploadStuffReactHelpers } from "@upload-stuff/react";
 
-declare const storageAdapter: StorageAdapter;
-declare const databaseAdapter: DatabaseAdapter;
+declare const storageAdapter: StorageAdapterFactory;
+declare const databaseAdapter: DatabaseAdapterFactory;
 
 const uploadStuff = UploadStuff({
   storageAdapter,
@@ -106,12 +142,11 @@ const uploadStuff = UploadStuff({
 
 type Context = { userId: string };
 const f = createUploadStuffRouter<typeof uploadStuff, Context>();
-
+// ---cut---
 const fileRouter = {
   avatar: f({ isPublic: true, files: ["image/*"], maxFileSize: "4MB" })
     .middleware(({ ctx }) => ({ uploadedBy: ctx.userId }))
     .onUploadComplete(({ middlewareData }) => {
-      // `.middleware()` returned `{ uploadedBy }`, so `.role` does not exist:
       return { role: middlewareData.role };
     })
     .build(),
@@ -122,19 +157,18 @@ const client = createUploadStuffClient<typeof fileRouter>({
 });
 const { useUploadStuff } = createUploadStuffReactHelpers(client);
 
-// Misspelled route name — the selector is type-checked against the router:
 useUploadStuff((r) => r.avatr);
 ```
 
 > One ordering rule: each builder method reads the *current* type, so write the
-> chain as `.input().middleware().onUploadComplete().build()`. Calling
-> `.onUploadComplete()` before `.middleware()` would leave `middlewareData`
-> unset.
+> chain as `.input().middleware().fields().onUploadComplete().build()` —
+> `.fields()` after `.middleware()` is what lets its resolver see
+> `middlewareData`, and `.onUploadComplete()` sees everything before it.
 
 ## Next steps
 
 <Cards>
   <Card title="Quickstart" href="/docs/quickstart" />
   <Card title="Core concepts" href="/docs/concepts" />
-  <Card title="API reference" href="/docs/api" />
+  <Card title="API reference" href="/docs/reference/server" />
 </Cards>

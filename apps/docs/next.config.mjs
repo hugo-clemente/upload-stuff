@@ -10,6 +10,20 @@ const config = {
     '@upload-stuff/server',
     '@upload-stuff/client',
   ],
+  async redirects() {
+    return [
+      {
+        source: '/docs/handlers',
+        destination: '/docs/server/handlers',
+        permanent: true,
+      },
+      {
+        source: '/docs/api',
+        destination: '/docs/reference/server',
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default withMDX(config);

@@ -1,0 +1,101 @@
+---
+title: "JavaScript"
+description: "Use the framework-free upload client for uploads, route config, progress, aborts, and headers."
+---
+
+The framework-free client drives uploads from the browser with `File` objects and `XMLHttpRequest`, so it works without React or any other UI framework. Pass your server's `FileRouter` type explicitly when you create it; the router is not inferred.
+
+## Create a client
+
+```ts
+import { createUploadStuffClient } from "@upload-stuff/client";
+import type { FileRouter } from "./server/upload-router";
+
+const client = createUploadStuffClient<FileRouter>({
+  baseURL: "https://api.example.com",
+});
+```
+
+`basePath` defaults to `/api/upload-stuff`. Override it when your server handler is mounted somewhere else, and keep the client path in sync with the server handler config. The client does not auto-discover the server mount.
+
+```ts
+const client = createUploadStuffClient<FileRouter>({
+  baseURL: "https://api.example.com",
+  basePath: "/api/files",
+});
+```
+
+The client object is `{ getRouteConfig, uploadFiles }`.
+
+## Upload files
+
+Call `uploadFiles(endpoint, files, options?)`. The endpoint can be a route key or a selector, and route input goes under `options.input`. When a route declares an `input` schema, the options object with `input` is required; routes without input can omit it entirely.
+
+```ts
+const controller = new AbortController();
+
+const res = await client.uploadFiles("avatar", files, {
+  input: { albumId: "123" },
+  onUploadProgress: (percent) => setProgress(percent),
+  onClientUploadComplete: (res) => console.log(res),
+  onUploadError: (err) => toast.error(err.message),
+  signal: controller.signal,
+});
+```
+
+```ts
+await client.uploadFiles((r) => r.avatar, files, {
+  input: { albumId: "123" },
+});
+```
+
+## Callbacks and controls
+
+| Callback | Fires |
+| --- | --- |
+| `onBeforeUploadBegin` | Before presigned URLs are requested; can inspect or replace the `File[]`. |
+| `onUploadBegin` | When an individual file starts. |
+| `onUploadProgress` | On whole-run progress, as a percent. |
+| `onClientUploadComplete` | After the server-side completion hook finishes. |
+| `onUploadError` | On failure. |
+| `onUploadAborted` | When an abort signal cancels the upload. |
+
+| Option | Controls |
+| --- | --- |
+| `uploadProgressGranularity` | How often progress updates are emitted. |
+| `headers` | Extra headers sent with the init and complete requests. |
+| `signal` | An `AbortSignal`; abort rejects this run during config wait, init, and byte transfer (a shared route-config fetch keeps running for other callers). After the final `PUT`, completion proceeds regardless. |
+| `routeConfig` | Skips the route-config fetch when you already have the normalized config. |
+
+For the complete `UploadFilesOptions` and `UploadCallbacks` shapes, see [the client reference](/docs/reference/client).
+
+## Route config
+
+`client.getRouteConfig(endpoint, { force? })` fetches and caches the server's normalized route config for an endpoint.
+
+```ts
+const config = await client.getRouteConfig("avatar");
+const freshConfig = await client.getRouteConfig((r) => r.avatar, { force: true });
+```
+
+Set `force: true` when you need to refetch a route whose server-side config may have changed. In-flight requests are still deduped.
+
+## Image preprocessing
+
+`preprocessImages(maxWidthOrHeight?)` returns an `onBeforeUploadBegin` callback you can pass to `uploadFiles`.
+
+```ts
+import { preprocessImages } from "@upload-stuff/client";
+
+await client.uploadFiles("avatar", files, {
+  input: { albumId: "123" },
+  onBeforeUploadBegin: preprocessImages(1600),
+});
+```
+
+It compresses only `image/jpeg`, `image/png`, and `image/webp` files. Other files pass through unchanged.
+
+## Next steps
+
+- [Use the React bindings](/docs/client/react)
+- [Read the client reference](/docs/reference/client)

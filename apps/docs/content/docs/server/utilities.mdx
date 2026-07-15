@@ -1,0 +1,70 @@
+---
+title: "Utilities"
+description: "Use server-side helpers for stored files outside the upload flow."
+---
+
+`serverUtils` lives on your `UploadStuff` instance. Use it when your server needs to create, remove, or clean up files outside the browser presigned-upload lifecycle.
+
+## uploadFile
+
+Use `uploadFile` for server-initiated uploads: generated reports, imports from another system, or any file your backend already has in memory.
+
+Pass `{ data, content }`:
+
+- **You supply:** `filename`, `size`, `contentType`, `isPublic`, any required custom fields, and optionally `createdAt` — the browser flow stamps it, `uploadFile` does not.
+- **Library-filled:** `id`, `key`, `publicUrl`, `stored`, `storedAt`. `batchId` and `uploadSessionData` belong to the browser flow and stay unset.
+
+`content` accepts a `string` or a `Uint8Array` (a Node `Buffer` is a `Uint8Array`).
+
+```ts
+const bytes = await renderReport();
+
+await uploadStuff.serverUtils.uploadFile({
+  data: {
+    filename: "report.pdf",
+    size: bytes.byteLength,
+    contentType: "application/pdf",
+    isPublic: false,
+  },
+  content: bytes,
+});
+```
+
+If your instance declares required custom fields, include them in `data` too:
+
+```ts
+await uploadStuff.serverUtils.uploadFile({
+  data: {
+    filename: "avatar.png",
+    size: imageBytes.byteLength,
+    contentType: "image/png",
+    isPublic: true,
+    userId: "user_123",
+  },
+  content: imageBytes,
+});
+```
+
+## deleteFiles
+
+Use `deleteFiles` when your own server action decides files should be removed. Pass database file IDs, not storage keys.
+
+```ts
+await uploadStuff.serverUtils.deleteFiles([fileId]);
+```
+
+The utility removes the storage objects first, then deletes the database rows. If storage deletion fails, the rows stay in place so you do not lose track of orphaned objects.
+
+## cleanUpFiles
+
+Use `cleanUpFiles` to sweep stale pending rows that are older than the instance upload window.
+
+```ts
+await uploadStuff.serverUtils.cleanUpFiles();
+```
+
+Schedule this from a cron job or queue worker instead of calling it from a request path.
+
+## Reference
+
+For the full `ServerUtils` surface, see [the server reference](/docs/reference/server). For the adapter contracts these utilities call into, see [Core types](/docs/reference/core#adapter-contracts).

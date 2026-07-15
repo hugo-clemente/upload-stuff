@@ -62,11 +62,36 @@ const defaultFileKeyGenerator = (params: {
   return `${params.fileId}-${params.filename}`;
 };
 
+/**
+ * The consumer-facing `uploadStuff.serverUtils` API.
+ *
+ * Declared as an explicit exported type (rather than
+ * `ReturnType<typeof buildServerUtils<TFields>>`) because referencing a
+ * non-exported symbol through a typeof instantiation expression inside the
+ * exported `UploadStuff` type crashes TypeScript's quick-info serializer with
+ * a stack overflow when the alias is hovered from another module (see
+ * upload-stuff.quickinfo.test.ts).
+ */
+export type ServerUtils<TFields extends FieldsDeclaration = Record<never, never>> = {
+  /** Delete pending rows (and their storage objects) older than the upload window. */
+  cleanUpFiles: () => Promise<void>;
+  /** Upload a file from the server, bypassing the presigned browser flow. */
+  uploadFile: (params: {
+    data: Omit<
+      DatabaseFile<TFields>,
+      "stored" | "id" | "key" | "storedAt" | "batchId" | "publicUrl" | "uploadSessionData"
+    >;
+    content: FileUploadContent;
+  }) => Promise<DatabaseFile<TFields>>;
+  /** Delete files by id from both the database and storage. */
+  deleteFiles: (fileIds: string[]) => Promise<void>;
+};
+
 const buildServerUtils = <
   TFields extends FieldsDeclaration = Record<never, never>,
 >(
   config: UploadStuffConfig<TFields>,
-) => {
+): ServerUtils<TFields> => {
   const deleteFiles = async (fileIds: string[]) => {
     await config.databaseAdapter.deleteFiles({
       fileIds,
@@ -163,7 +188,7 @@ export type UploadStuff<
   $types: {
     fields: TFields;
   };
-  serverUtils: ReturnType<typeof buildServerUtils<TFields>>;
+  serverUtils: ServerUtils<TFields>;
   __storageAdapter: StorageAdapter;
   __databaseAdapter: DatabaseAdapter<TFields>;
   __fileIdGenerator: FileIdGenerator;

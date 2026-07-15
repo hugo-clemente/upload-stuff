@@ -1,10 +1,7 @@
 ---
-title: Core concepts
+title: Concepts
 description: The file router, the presigned-upload lifecycle, adapters, and cleanup.
 ---
-
-upload-stuff has a small set of moving parts. Once these click, the rest of the
-API follows.
 
 ## The file router
 
@@ -13,7 +10,9 @@ accepts (`files`, `maxFileSize`, `maxFileCount`) and a builder chain
 (`.input()`, `.middleware()`, `.fields()`, `.onUploadComplete()`). The router
 type is exported once and consumed on the client, which is how the client hook
 infers its own types — there is a single source of truth for every route's
-shape. See [Type safety](/docs/type-safety) for that inference shown end-to-end.
+shape. Name routes after what they carry — `avatar`, `resume`,
+`messageAttachment`. See [Type safety](/docs/type-safety) for that inference
+shown end-to-end.
 
 ## The presigned-upload lifecycle
 
@@ -35,6 +34,10 @@ The two server round-trips are **init** (authorize + presign) and **complete**
 (verify + persist). Files that are initialized but never completed are left as
 pending rows — see [Cleanup](#cleanup) below.
 
+Who may upload, and what "completed" proves, are security questions. The
+[security model](/docs/concepts/security) covers the trust boundaries, completion
+capability, upload window, and route-auth gotchas.
+
 ## Adapters
 
 upload-stuff talks to storage and to your database through two interfaces, so the
@@ -48,7 +51,7 @@ core stays backend-agnostic:
   implementation for one `File` model; the `DatabaseAdapter` interface lets you
   use any ORM.
 
-See the [API reference](/docs/api) for both interfaces.
+See the [API reference](/docs/reference/server) for both interfaces.
 
 ## Cleanup
 
@@ -56,4 +59,4 @@ Because init creates a row before the client finishes uploading, an abandoned
 upload leaves a pending row and (sometimes) no object. `serverUtils.cleanUpFiles()`
 finds rows older than a threshold that were never completed and removes them. Run
 it on a schedule (a cron job, a queue worker) to keep storage and the database in
-sync. The cleanup recipe will walk through wiring it to a cron.
+sync.

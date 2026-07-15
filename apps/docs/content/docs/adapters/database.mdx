@@ -1,0 +1,49 @@
+---
+title: "Custom database"
+description: "Implement the DatabaseAdapter interface for any ORM or database."
+---
+
+For any ORM other than Prisma, implement the `DatabaseAdapter` interface from
+`@upload-stuff/core` and supply it as a factory (`DatabaseAdapterFactory`). The
+library calls the factory with a type-only marker, so ignore the argument:
+
+```ts
+import type { DatabaseAdapterFactory } from "@upload-stuff/core";
+
+const myAdapter: DatabaseAdapterFactory = () => ({
+  createFiles: async ({ files }) => {
+    // insert the rows as given — including the library-stamped columns
+  },
+  findFilesByBatchId: async ({ batchId }) => {
+    return []; // the batch's rows
+  },
+  findFilesToCleanUp: async ({ createdAtThreshold }) => {
+    return []; // pending rows older than the threshold
+  },
+  updateFilesToStored: async ({ batchId, storedAt }) => {
+    return { updatedCount: 0 }; // count of rows you flipped to stored
+  },
+  updateFile: async ({ file }) => {
+    return file; // the updated row
+  },
+  deleteFiles: async ({ fileIds, deleteFromStorage }) => {
+    // call deleteFromStorage(keys) first; keep the rows if it throws
+  },
+});
+```
+
+Then pass it to the instance: `databaseAdapter: myAdapter`. If your instance
+declares custom `fields`, parameterize the factory type with the same
+declaration (`DatabaseAdapterFactory<typeof fields>`) — a bare
+`DatabaseAdapterFactory` types the rows without your columns.
+
+Exact signatures and the full row shape are in
+[Core types](/docs/reference/core#adapter-contracts). Two requirements worth
+calling out:
+
+- `updateFilesToStored` must only update rows that are still `stored: false`,
+  so a repeated or concurrent completion of the same batch updates zero rows —
+  see the [security model](/docs/concepts/security).
+- `deleteFiles` must run the provided `deleteFromStorage` callback before
+  removing rows, and keep them if it throws, so failed storage deletions never
+  strand orphaned objects.

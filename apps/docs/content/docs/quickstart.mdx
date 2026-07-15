@@ -3,34 +3,67 @@ title: Quickstart
 description: From a configured S3 bucket to a working Next.js upload in about five minutes.
 ---
 
-import { Callout } from 'fumadocs-ui/components/callout';
 import { Step, Steps } from 'fumadocs-ui/components/steps';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 
-<Callout title="Prerequisites">
-This quickstart assumes you already have:
+Before you start you need:
 
 - A **Next.js App Router** project.
-- An **S3 bucket** with CORS configured for browser `PUT` uploads, and AWS
-  credentials available as environment variables.
+- An S3 bucket with [CORS configured for browser `PUT` uploads](https://docs.aws.amazon.com/AmazonS3/latest/userguide/ManageCorsUsing.html)
+  and [ACLs allowed](/docs/adapters/s3), plus AWS credentials in environment variables.
+- A Prisma client exported from `lib/prisma.ts`, with the
+  [required `File` model](/docs/adapters/prisma).
+- Any auth helper that resolves a user id from request headers — the quickstart
+  calls it `auth(headers)`.
 
-Setting up the bucket and its CORS policy is AWS-side work and outside this
-library — see the
-[AWS S3 CORS guide](https://docs.aws.amazon.com/AmazonS3/latest/userguide/ManageCorsUsing.html).
-"Type-checks" (every sample below is verified at build time) and "produces a
-working upload" are separate guarantees; the latter depends on your bucket being
-reachable and correctly permissioned.
-</Callout>
+Only step 3's handler wiring is Next-specific — see
+[Handlers](/docs/server/handlers) for Bun, Cloudflare, and Express.
 
-<Callout type="info" title="Not on Next.js?">
-The v1 quickstart targets the Next.js App Router. The library itself works on any
-fetch-compatible runtime; dedicated guides for other runtimes are coming. You can
-still follow the concepts below — only the handler wiring is Next-specific.
-</Callout>
+You will write four files — an `UploadStuff` instance, a typed file router, the
+route handler, and the client helpers — then drop the upload component into any
+page. The finished flow runs in the
+[kitchen-sink example](https://github.com/hugo-clemente/upload-stuff/tree/main/examples/kitchen-sink).
 
-Install the packages:
+<Tabs items={['npm', 'pnpm', 'yarn', 'bun']}>
+
+<Tab value="npm">
 
 ```sh
-npm install @upload-stuff/server @upload-stuff/client @upload-stuff/react
+npm install @upload-stuff/server @upload-stuff/client @upload-stuff/react zod
+```
+
+</Tab>
+
+<Tab value="pnpm">
+
+```sh
+pnpm add @upload-stuff/server @upload-stuff/client @upload-stuff/react zod
+```
+
+</Tab>
+
+<Tab value="yarn">
+
+```sh
+yarn add @upload-stuff/server @upload-stuff/client @upload-stuff/react zod
+```
+
+</Tab>
+
+<Tab value="bun">
+
+```sh
+bun add @upload-stuff/server @upload-stuff/client @upload-stuff/react zod
+```
+
+</Tab>
+
+</Tabs>
+
+The S3 and Prisma adapters used below also need their peer dependencies:
+
+```sh
+pnpm add @aws-sdk/client-s3 @aws-sdk/s3-request-presigner @prisma/client
 ```
 
 <Steps>
@@ -39,8 +72,7 @@ npm install @upload-stuff/server @upload-stuff/client @upload-stuff/react
 
 ### Create an `UploadStuff` instance
 
-```ts
-// lib/upload-stuff.ts
+```ts title="lib/upload-stuff.ts"
 import { UploadStuff } from "@upload-stuff/server";
 import { s3Adapter } from "@upload-stuff/server/adapters/s3";
 import { prismaAdapter } from "@upload-stuff/server/adapters/prisma";
@@ -69,13 +101,12 @@ export const uploadStuff = UploadStuff({
 
 ### Define a file router
 
-```ts
-// lib/file-router.ts
+```ts title="lib/file-router.ts"
 import { z } from "zod";
-import { createUploadStuffRouter } from "@upload-stuff/server";
+import { createUploadStuffRouter, UploadStuffError } from "@upload-stuff/server";
 import { uploadStuff } from "./upload-stuff";
 
-type Context = { userId: string };
+type Context = { userId: string | null };
 
 const f = createUploadStuffRouter<typeof uploadStuff, Context>();
 
@@ -86,9 +117,10 @@ export const fileRouter = {
     maxFileSize: "4MB",
     maxFileCount: 1,
   })
-    .middleware(({ ctx }) => ({ userId: ctx.userId }))
-    // Runs on your server after S3 confirms the upload. Whatever you return
-    // here is sent to the client's onClientUploadComplete, fully typed.
+    .middleware(({ ctx }) => {
+      if (!ctx.userId) throw new UploadStuffError({ code: "FORBIDDEN", message: "Sign in to upload" });
+      return { userId: ctx.userId };
+    })
     .onUploadComplete(({ files, middlewareData }) => {
       console.log("Uploaded by", middlewareData.userId, files);
     })
@@ -98,14 +130,18 @@ export const fileRouter = {
 export type FileRouter = typeof fileRouter;
 ```
 
+Auth lives in `.middleware()`, not in `createContext` — see the
+[security model](/docs/concepts/security). `.onUploadComplete()` runs on your
+server after S3 confirms the upload; whatever it returns is sent to the
+client's `onClientUploadComplete`, fully typed.
+
 </Step>
 
 <Step>
 
 ### Wire the Next.js route handler
 
-```ts
-// app/api/upload-stuff/[...uploadStuff]/route.ts
+```ts title="app/api/upload-stuff/[...uploadStuff]/route.ts"
 import { toNextJsHandler } from "@upload-stuff/server/next";
 import { uploadStuff } from "@/lib/upload-stuff";
 import { fileRouter } from "@/lib/file-router";
@@ -117,10 +153,14 @@ export const { GET, POST } = toNextJsHandler({
   config: {},
   createContext: async ({ headers }) => {
     const session = await auth(headers);
-    return { userId: session.userId };
+    return { userId: session?.userId ?? null };
   },
 });
 ```
+
+`createContext` runs for every request, including the public route-config
+endpoint — resolve identity gently and never throw for anonymous users. See
+[the security model](/docs/concepts/security).
 
 </Step>
 
@@ -128,15 +168,9 @@ export const { GET, POST } = toNextJsHandler({
 
 ### Create the client helpers and upload
 
-<Callout title="This file is the type bridge">
-Passing your server's `FileRouter` type to `createUploadStuffClient` is what
-connects the two ends — `createUploadStuffReactHelpers` infers it back from the
-`client` instance, so every type the client hook exposes flows from this one
-import. See [Type safety](/docs/type-safety) for what that buys you.
-</Callout>
+Set `NEXT_PUBLIC_APP_URL` in `.env.local` (e.g. `http://localhost:3000`):
 
-```ts
-// lib/upload-stuff-client.ts
+```ts title="lib/upload-stuff-client.ts"
 "use client";
 
 import { createUploadStuffClient } from "@upload-stuff/client";
@@ -150,7 +184,11 @@ const client = createUploadStuffClient<FileRouter>({
 export const { useUploadStuff } = createUploadStuffReactHelpers(client);
 ```
 
-```tsx
+Passing the server's `FileRouter` type to `createUploadStuffClient` types the
+client, and `createUploadStuffReactHelpers(client)` infers the hooks from the
+client instance — see [Type safety](/docs/type-safety).
+
+```tsx title="components/avatar-upload.tsx"
 "use client";
 
 import { useUploadStuff } from "@/lib/upload-stuff-client";
@@ -166,17 +204,25 @@ export function AvatarUpload() {
       type="file"
       accept={accept}
       disabled={isUploading}
-      onChange={(e) => startUpload(Array.from(e.target.files ?? []))}
+      onChange={(e) => {
+        // startUpload also rejects on failure; onUploadError already handles it
+        startUpload(Array.from(e.target.files ?? [])).catch(() => {});
+      }}
     />
   );
 }
 ```
 
+Render `<AvatarUpload />` on any page and upload a file.
+
 </Step>
 
 </Steps>
 
-That is the whole flow: a typed router on the server, a fetch-compatible handler,
-and an inferred client hook. Next, see [Type safety](/docs/type-safety) for how
-the router and client stay in sync, read [Core concepts](/docs/concepts) for the
-presigned-upload lifecycle, or browse the [API reference](/docs/api).
+## Next steps
+
+<Cards>
+  <Card title="Type safety" href="/docs/type-safety" />
+  <Card title="Core concepts" href="/docs/concepts" />
+  <Card title="Security model" href="/docs/concepts/security" />
+</Cards>

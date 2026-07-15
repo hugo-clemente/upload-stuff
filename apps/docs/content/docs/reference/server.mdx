@@ -1,0 +1,113 @@
+---
+title: "Server API"
+description: "Source-generated reference for the server package."
+---
+
+`@upload-stuff/server` exposes the `UploadStuff` instance factory, the
+file-router builder, and framework handlers. Root exports are documented here;
+the framework and adapter subpaths follow at the end. Tables are generated from
+the package source, so they match the shipped API.
+
+## UploadStuff
+
+```ts
+const uploadStuff = UploadStuff({ storageAdapter, databaseAdapter, /* … */ });
+```
+
+Builds an instance from a single config object. The adapters, generators, and
+upload-window defaults it accepts:
+
+<AutoTypeTable path="../../packages/core/src/types.ts" name="CreateUploadStuffConfig" />
+
+The instance exposes `serverUtils` for out-of-band file operations:
+
+<AutoTypeTable path="../../packages/server/src/upload-stuff.ts" name="ServerUtils" />
+
+## createUploadStuffRouter
+
+```ts
+const f = createUploadStuffRouter<typeof uploadStuff, Context>();
+```
+
+Returns a route factory `f` bound to your instance and request `Context`. Call
+`f(routeConfig)` to start a route, then chain the builder below and finish with
+`.build()`:
+
+<AutoTypeTable path="../../packages/core/src/router-types.ts" name="UploadBuilder" />
+
+The map of built routes you pass to a handler is your `FileRouter` — the type
+you hand to `createUploadStuffClient` for end-to-end type safety.
+
+## Handlers
+
+`toFetchHandler({ fileRouter, uploadStuff, config, createContext })` turns a
+router into a Web `fetch` handler; `fileRouteHandlers` and the framework subpaths
+below wrap it. Those options are typed by `CreateUploadStuffHandlerOptions`, and
+`config` by `UploadStuffHTTPHandlerConfig`:
+
+### UploadStuffHTTPHandlerConfig
+
+<AutoTypeTable path="../../packages/server/src/fetch-handler.ts" name="UploadStuffHTTPHandlerConfig" />
+
+### CreateUploadStuffHandlerOptions
+
+<AutoTypeTable path="../../packages/server/src/fetch-handler.ts" name="CreateUploadStuffHandlerOptions" />
+
+### RouteHandlers
+
+The lower-level per-route handlers, if you need to drive the lifecycle yourself.
+
+<AutoTypeTable path="../../packages/server/src/router/handler.ts" name="RouteHandlers" />
+
+### InitUploadHandlerData
+
+<AutoTypeTable path="../../packages/server/src/router/handler.ts" name="InitUploadHandlerData" />
+
+### CompleteUploadHandlerData
+
+<AutoTypeTable path="../../packages/server/src/router/handler.ts" name="CompleteUploadHandlerData" />
+
+## Subpath exports
+
+### @upload-stuff/server/next
+
+```ts
+import { toNextJsHandler } from "@upload-stuff/server/next";
+export const { GET, POST } = toNextJsHandler(config);
+```
+
+Adapts a router into Next.js App Router `GET`/`POST` route handlers. `config` is a
+`CreateUploadStuffHandlerOptions`.
+
+### @upload-stuff/server/node
+
+```ts
+import { toNodeHandler } from "@upload-stuff/server/node";
+```
+
+`toNodeHandler(config)` returns a Node `(req, res)` handler for Express and other
+`http.Server`-based frameworks. `NodeRequestLike` is the minimal request shape it
+reads.
+
+### @upload-stuff/server/adapters/s3
+
+```ts
+import { s3Adapter } from "@upload-stuff/server/adapters/s3";
+
+storageAdapter: s3Adapter({ config, bucket, objectMetadata })
+```
+
+A `StorageAdapter` factory backed by the AWS S3 SDK. `objectMetadata` is
+optional; when provided it resolves `x-amz-meta-*` values per row, typed against
+the instance's declared `fields`.
+
+### @upload-stuff/server/adapters/prisma
+
+```ts
+import { prismaAdapter } from "@upload-stuff/server/adapters/prisma";
+
+databaseAdapter: prismaAdapter({ prisma })
+```
+
+A `DatabaseAdapter` factory that persists file rows through a Prisma client. See
+the [database adapter guide](/docs/adapters/prisma) for the model shape.

@@ -1,0 +1,95 @@
+---
+title: "Security"
+description: "Trust boundaries, capability-based completion, upload windows, and route-auth gotchas."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+upload-stuff moves file bytes directly between the browser and your storage bucket. Your server authorizes, presigns, records pending rows, and verifies completion. That design decides where security lives: everything the browser sends is untrusted input, and the server round-trips are the authority.
+
+## Trust boundaries
+
+Five parties touch an upload: the **browser**, your **client code**, the **upload-stuff handler** on your server, your **database**, and your **storage bucket**.
+
+1. **Init** — `POST /:endpoint/init-upload`. The server validates the request shape, parses route input, validates file metadata against the route's `files` config, runs route middleware, creates pending database rows, and returns presigned `PUT` URLs plus a `batchToken`.
+2. **Upload** — the browser `PUT`s bytes straight to storage with the presigned URLs. Your server never sees the bytes. The bucket handles the signed request; upload-stuff still treats completion as untrusted until verification passes.
+3. **Complete** — `POST /:endpoint/complete-upload` with the `batchToken`. The server verifies each object through the storage adapter, marks rows stored, and runs your `onUploadComplete`.
+
+Client-side checks such as `accept` and preflight validation are UX. The server re-validates file count, size, and content type on init, and storage verification checks the stored object before completion succeeds.
+
+## Capability-based completion
+
+Init generates a `batchToken` from 32 random bytes using Web Crypto and stores only `sha256(batchToken)` as the database `batchId`. Completing an upload is proof of possession, not proof of identity:
+
+- A leaked or enumerated database `batchId` is useless because completion hashes the submitted token again.
+- The token is bound to its endpoint. Completing a batch through a different route than the one used at init is rejected, so the wrong route's `onUploadComplete` cannot run.
+- The `batchToken` itself is a bearer capability. Anyone holding it can complete that batch on that endpoint within the upload window, and receives whatever your `onUploadComplete` returns — keep sensitive values out of that payload. Do not log the token or persist it beyond the upload lifetime.
+- The token carries no identity. For owner-scoped listing, persist the uploader in an app-declared [`.fields()`](/docs/server/file-router) column and filter your own queries by it.
+
+Route middleware runs on **init only**. Completion is protected by the token, not by re-running middleware, so auth decisions belong in middleware before any presigned URL exists.
+
+## The upload window
+
+`uploadWindowSeconds` defaults to `3600` and is configurable from `1` through `604800` seconds on the `UploadStuff(...)` instance. The value is used in three places:
+
+- it is passed to the storage adapter as the presigned upload expiry,
+- a pending batch older than the window is rejected at completion,
+- `serverUtils.cleanUpFiles()` uses it to find abandoned pending rows.
+
+One deliberate exception: a batch that already completed can be completed again — even after the window — without re-running `onUploadComplete`. The retry gets the batch's files back, but not the original `onUploadComplete` result: `serverData` is `undefined` on replays, so clients must not depend on a retry returning the same server data.
+
+## Storage verification
+
+At completion, the core delegates object validation to the storage adapter's `verifyUpload` for every file. The built-in [S3 adapter](/docs/adapters/s3) checks that the object exists, that its size matches exactly, that its content type matches exactly, and that it is not empty.
+
+The S3 adapter also supports optional ETag comparison if a caller supplies `clientEtag` to `verifyUpload`, but the current HTTP upload flow does not send a client ETag during completion.
+
+<Callout type="warn" title="Custom adapters inherit this responsibility">
+The `StorageAdapter` type exposes `verifyUpload`, but it cannot force what checks your adapter performs. If you write a custom adapter, provide equivalent validation or "completed" stops meaning that the declared object is actually present.
+</Callout>
+
+## The route-config endpoint is public by design
+
+`GET /:endpoint/route-config` returns a known route's normalized config: accepted types, size limits, and count limits. Clients use it to render pickers without hardcoding constraints. Treat route config as world-readable to anyone your `createContext` allows through.
+
+Two consequences:
+
+- **Do not put secrets in route config.** It is metadata served to any client that can reach the route-config endpoint.
+- **Endpoint names are enumerable.** A known endpoint's route-config action returns `200`; an unknown endpoint on the same action returns `400`. Do not encode secrets or sensitive business facts in endpoint names.
+
+## `isPublic` is file visibility, not endpoint auth
+
+`isPublic` on a route controls how the stored file is treated. It is passed to the storage adapter when presigning and persisted on the file row. In the built-in S3 adapter it controls the object ACL.
+
+It does **not** protect upload endpoints. A route with `isPublic: false` still accepts init requests from anyone your route middleware allows. Endpoint protection is [route middleware](/docs/server/file-router) that rejects callers who are not allowed to upload.
+
+## `createContext` must be anonymous-safe
+
+The handler calls `createContext({ headers })` for every request under the base path, including route-config reads, unknown endpoints, and wrong methods. Exceptions become host-runtime errors (how each wrapper surfaces them is covered in [Errors](/docs/reference/errors)).
+
+If `createContext` throws for anonymous users, the public route-config endpoint breaks and probes become server errors. Resolve identity gently there — `null` for anonymous is fine:
+
+```ts
+createContext: async ({ headers }) => ({
+  userId: await getUserIdOrNull(headers),
+}),
+```
+
+Enforce it in middleware — that is the gate:
+
+```ts
+.middleware(({ ctx }) => {
+  if (!ctx.userId) throw new UploadStuffError({ code: "FORBIDDEN", message: "Sign in to upload" });
+  return { userId: ctx.userId };
+})
+```
+
+## Before you ship
+
+- Put auth in route middleware, not in `createContext` or `isPublic`.
+- Keep `createContext` anonymous-safe.
+- Keep route config and endpoint names free of secrets.
+- Declare file constraints (`files`, sizes, counts) on the route; the server enforces them on init.
+- Harden storage at the bucket: CORS, ACL/public-access settings, and credentials. See the [S3 adapter](/docs/adapters/s3) page.
+- Run [`serverUtils.cleanUpFiles`](/docs/server/utilities#cleanupfiles) on a schedule to sweep abandoned pending uploads.
+- Make custom storage adapters implement real `verifyUpload` checks.

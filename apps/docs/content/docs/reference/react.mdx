@@ -1,0 +1,50 @@
+---
+title: "React API"
+description: "Source-generated reference for the React bindings."
+---
+
+`@upload-stuff/react` wraps the framework-free client engine in hooks. Tables
+are generated from the package source, so they match the shipped API.
+
+## createUploadStuffReactHelpers
+
+```ts
+const { useUploadStuff, useRouteConfig } = createUploadStuffReactHelpers(client);
+```
+
+Binds a typed [`UploadStuffClient`](/docs/reference/client) to a pair of hooks.
+Call it once (usually in a shared module) and export the returned hooks so every
+component shares the same client.
+
+## useUploadStuff
+
+```ts
+useUploadStuff(endpoint, options?): UseUploadStuffReturn
+```
+
+The primary upload hook. `endpoint` is a key of your file router (or an
+`EndpointArg` resolver); `options` are the callbacks and per-hook settings below.
+
+### UseUploadStuffOptions
+
+<AutoTypeTable path="../../packages/react/src/index.ts" name="UseUploadStuffOptions" />
+
+### UseUploadStuffReturn
+
+<AutoTypeTable path="../../packages/react/src/index.ts" name="UseUploadStuffReturn" />
+
+### StartUploadFnOptions
+
+Per-call options for the returned `startUpload` function.
+
+<AutoTypeTable path="../../packages/react/src/index.ts" name="StartUploadFnOptions" />
+
+## useRouteConfig
+
+```ts
+useRouteConfig(endpoint): { data, error, isLoading, refetch }
+```
+
+Fetches and caches a single route's normalized config. A failed refresh keeps
+serving the config already loaded; only a first load surfaces `error`. Call
+`refetch()` to force a fresh fetch after the route's config changes server-side.

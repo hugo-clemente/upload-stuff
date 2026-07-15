@@ -10,3 +10,29 @@ html > body[data-scroll-locked] {
   margin-right: 0px !important;
   --removed-body-scroll-bar-size: 0px !important;
 }
+
+/*
+ * Compact sidebar so the full nav tree fits a 900px-tall viewport.
+ * #nd-sidebar is fumadocs-ui's desktop sidebar hook (same one its shipped
+ * themes target); these unlayered rules beat the Tailwind-layered defaults
+ * (text-sm, p-2, mt-6) without !important. Item padding-inline-start is an
+ * inline style (nesting offset) — only padding-block is safe to override.
+ */
+#nd-sidebar {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+#nd-sidebar [data-radix-scroll-area-viewport] a,
+#nd-sidebar [data-radix-scroll-area-viewport] button {
+  padding-block: calc(var(--spacing) * 1.5);
+}
+
+#nd-sidebar [data-radix-scroll-area-viewport] p {
+  margin-top: calc(var(--spacing) * 3);
+}
+
+/* preserve fumadocs' first:mt-0 on the first separator */
+#nd-sidebar [data-radix-scroll-area-viewport] p:first-child {
+  margin-top: 0;
+}

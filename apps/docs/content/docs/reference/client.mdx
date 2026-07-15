@@ -1,0 +1,67 @@
+---
+title: "Client API"
+description: "Source-generated reference for the framework-free client engine."
+---
+
+`@upload-stuff/client` drives uploads straight from the browser — no UI
+framework required (it uses `File` and `XMLHttpRequest` under the hood). Tables
+are generated from the package source, so they match the shipped API.
+
+## createUploadStuffClient
+
+```ts
+const client = createUploadStuffClient<FileRouter>(options);
+```
+
+Creates a typed client. Pass your server's `FileRouter` type explicitly as the
+type argument — that is what gives every call end-to-end type safety. The router
+is not inferred from `options`.
+
+### CreateUploadStuffClientOptions
+
+<AutoTypeTable path="../../packages/client/src/types.ts" name="CreateUploadStuffClientOptions" />
+
+### UploadStuffClient
+
+The object returned by `createUploadStuffClient`.
+
+<AutoTypeTable path="../../packages/client/src/client.ts" name="UploadStuffClient" />
+
+## Upload options
+
+### UploadFilesOptions
+
+Passed to `uploadFiles(endpoint, files, options?)`. Extends `UploadCallbacks`
+with per-run controls.
+
+<AutoTypeTable path="../../packages/client/src/types.ts" name="UploadFilesOptions" />
+
+### UploadCallbacks
+
+The lifecycle callbacks shared by the client and the React bindings.
+
+<AutoTypeTable path="../../packages/client/src/types.ts" name="UploadCallbacks" />
+
+### UploadFilesArgs
+
+A helper tuple type that makes the `input` argument required only when the route
+declares one. When the route has no input it is `[options?]`; otherwise it is
+`[options]` with `options.input` required.
+
+### ProgressGranularity
+
+`"all" | "fine" | "coarse"` — how often `onUploadProgress` fires: `"all"` on
+every report, `"fine"` every 1%, `"coarse"` every 10%. `100` is always reported.
+
+## Helpers
+
+- **`preprocessImages(maxWidthOrHeight?)`** — returns an `onBeforeUploadBegin` callback that compresses raster images client-side before upload.
+- **`resolveEndpoint(endpoint)`** — normalize an `EndpointArg` to its string key.
+- **`mergeHeaders(...inits)`** — merge several `HeadersInit` values into a plain object; later sources win, `undefined` skipped.
+- **`getAcceptFromRouteConfig(config)`** — derive an `accept` string from a route's `files` config (re-exported from core).
+
+## Helper types
+
+- **`EndpointArg<TRouter>`** — a route key (`"avatar"`) or a selector (`(r) => r.avatar`); accepted anywhere an endpoint is named.
+- **`inferRouteServerData<TRoute>`** — the route's `onUploadComplete` return type; what `onClientUploadComplete` receives as `res.serverData`.
+- **`inferRouteInput<TRoute>`** — the schema's **input** side: what the client sends. Server callbacks receive the parsed output side, which can differ when the schema transforms.
