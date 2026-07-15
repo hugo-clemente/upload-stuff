@@ -1,5 +1,22 @@
 # @upload-stuff/server
 
+## 0.2.0
+
+### Minor Changes
+
+- 39ca2da: First supported release — start here.
+
+  The `0.1.0` builds of `@upload-stuff/core`, `@upload-stuff/server`, and
+  `@upload-stuff/client` on npm are stale artifacts published before the current
+  API (per-type `files` route config, framework-agnostic handlers) and are
+  deprecated. `0.2.0` is the first release matching the documented API; see the
+  `0.1.0` changelog entry below for the full feature set.
+
+### Patch Changes
+
+- Updated dependencies [39ca2da]
+  - @upload-stuff/core@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

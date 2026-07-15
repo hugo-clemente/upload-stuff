@@ -1,5 +1,15 @@
 # docs
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [39ca2da]
+  - @upload-stuff/core@0.2.0
+  - @upload-stuff/server@0.2.0
+  - @upload-stuff/client@0.2.0
+  - @upload-stuff/react@0.2.0
+
 ## 0.0.2
 
 ### Patch Changes
