@@ -1,6 +1,6 @@
 {
   "name": "@upload-stuff/client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Framework-free upload engine for upload-stuff.",
   "keywords": [
     "file-upload",
